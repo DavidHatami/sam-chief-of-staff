@@ -11,16 +11,16 @@ import type { Context, Config } from "@netlify/functions";
  * REQUIRED ENV VARS:
  *   GOOGLE_CLIENT_ID
  *   GOOGLE_CLIENT_SECRET
- *   GOOGLE_REFRESH_TOKEN
+ *   G_REFRESH_TOKEN
  */
 
 async function getGoogleToken(): Promise<string> {
   const clientId = Netlify.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Netlify.env.get("GOOGLE_CLIENT_SECRET");
-  const refreshToken = Netlify.env.get("GOOGLE_REFRESH_TOKEN");
+  const refreshToken = Netlify.env.get("G_REFRESH_TOKEN");
 
   if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("Gmail credentials not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN in Netlify env vars.");
+    throw new Error("Gmail credentials not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, G_REFRESH_TOKEN in Netlify env vars.");
   }
 
   const resp = await fetch("https://oauth2.googleapis.com/token", {

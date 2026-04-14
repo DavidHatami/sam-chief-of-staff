@@ -317,6 +317,7 @@
     <button class="etb-f" onclick="filterTasks('in-progress',this)">In Progress</button>
     <button class="etb-f" onclick="filterTasks('done',this)">Done</button>
     <button class="etb-f" onclick="filterTasks('urgent',this)">Urgent</button>
+    <button class="etb-f" onclick="filterTasks('archived',this)">Archived</button>
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
     <div id="tlist"><div class="eld">Loading tasks...</div></div>
@@ -346,6 +347,7 @@
             <option value="todo" selected>To Do</option>
             <option value="in-progress">In Progress</option>
             <option value="done">Done</option>
+            <option value="archived">Archived</option>
             <option value="canceled">Canceled</option>
           </select>
         </div>
@@ -802,8 +804,10 @@ async function loadTasks(){
 function renderTasks(){
   const list=document.getElementById('tlist');
   let tasks=allTasks;
-  if(taskFilter==='urgent') tasks=tasks.filter(t=>t.priority==='urgent'&&t.status!=='done');
-  else if(taskFilter!=='all') tasks=tasks.filter(t=>t.status===taskFilter);
+  if(taskFilter==='urgent') tasks=tasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='archived');
+  else if(taskFilter==='all') tasks=tasks.filter(t=>t.status!=='archived');
+  else if(taskFilter==='archived') tasks=tasks.filter(t=>t.status==='archived');
+  else tasks=tasks.filter(t=>t.status===taskFilter);
 
   if(!tasks.length){
     list.innerHTML='<div class="eld">'+(taskFilter==='all'?'No tasks yet. Click "+ Add Task" to get started.':'No tasks match this filter.')+'</div>';
@@ -844,6 +848,7 @@ function renderTasks(){
           <option value="todo"${t.status==='todo'?' selected':''}>To Do</option>
           <option value="in-progress"${t.status==='in-progress'?' selected':''}>In Progress</option>
           <option value="done"${t.status==='done'?' selected':''}>Done</option>
+          <option value="archived"${t.status==='archived'?' selected':''}>Archived</option>
           <option value="canceled"${t.status==='canceled'?' selected':''}>Canceled</option>
         </select>
         <select onchange="quickPriority('${t.id}',this.value)" style="padding:4px 6px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--mono);font-size:10px;cursor:pointer;">
@@ -982,7 +987,7 @@ async function deleteTask(id){
 function updateDashboardTasks(){
   // Update dashboard priority tasks card
   const dtasks=document.getElementById('dtasks');
-  const top4=allTasks.filter(t=>t.status!=='done'&&t.status!=='canceled').slice(0,4);
+  const top4=allTasks.filter(t=>t.status!=='done'&&t.status!=='canceled'&&t.status!=='archived').slice(0,4);
   if(!top4.length){
     dtasks.innerHTML='<div class="eld">No pending tasks. Click "VIEW ALL" to add some.</div>';
   }else{
@@ -1002,7 +1007,7 @@ function updateDashboardTasks(){
   if(pEl) pEl.textContent=pending;
   if(dEl) dEl.textContent=done;
   // Update sidebar badge
-  const urgent=allTasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='canceled').length;
+  const urgent=allTasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='canceled'&&t.status!=='archived').length;
   const tb=document.getElementById('tbadge');
   if(tb){if(urgent>0){tb.textContent=urgent;tb.style.display='inline';}else{tb.style.display='none';}}
 }
