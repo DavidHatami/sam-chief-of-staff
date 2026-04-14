@@ -101,6 +101,7 @@
 .email-accts{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
 .email-acct{padding:6px 12px;border-radius:6px;font-size:11px;background:var(--surface);border:1px solid var(--border);cursor:pointer;color:var(--text-dim);transition:all 0.15s;}
 .email-acct:hover{border-color:var(--accent);color:var(--text);}.email-acct.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
+#email-drag:hover{background:var(--accent)!important;}
 .etb-f{padding:6px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;}
 .etb-f:hover{border-color:var(--accent);color:var(--text);}.etb-f.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
 .ti{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;transition:background 0.1s;cursor:pointer;}
@@ -174,9 +175,10 @@
     <div class="sp"></div><div class="ec" id="ecount"></div>
     <button onclick="loadE('inbox',document.getElementById('btn-inbox'))">↻ Refresh</button>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:calc(100vh - 220px);">
-    <div class="card" style="padding:0;overflow:hidden;"><div class="el" id="elist" style="max-height:calc(100vh - 240px);overflow-y:auto;"><div class="eld">Loading emails...</div></div></div>
-    <div class="card" id="ereader" style="overflow-y:auto;max-height:calc(100vh - 240px);display:flex;flex-direction:column;">
+  <div id="email-split" style="display:flex;gap:0;min-height:calc(100vh - 220px);position:relative;">
+    <div id="email-left" class="card" style="padding:0;overflow:hidden;flex:0 0 380px;min-width:280px;max-width:60%;border-radius:10px 0 0 10px;border-right:none;"><div class="el" id="elist" style="height:calc(100vh - 240px);overflow-y:auto;"><div class="eld">Loading emails...</div></div></div>
+    <div id="email-drag" style="width:6px;cursor:col-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;" onmousedown="startDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:30px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
+    <div id="email-right" class="card" style="flex:1;overflow-y:auto;height:calc(100vh - 240px);border-radius:0 10px 10px 0;border-left:none;display:flex;flex-direction:column;">
       <div class="eld" id="ereader-empty">Click an email to read it</div>
       <div id="ereader-content" style="display:none;">
         <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">
@@ -388,11 +390,12 @@ async function readEmail(mid,row){
     const bodyEl=document.getElementById('er-body');
     if(body.contentType==='html'){
       const iframe=document.createElement('iframe');
-      iframe.style.cssText='width:100%;border:none;min-height:300px;background:#fff;border-radius:6px;';
+      iframe.style.cssText='width:100%;border:none;min-height:200px;border-radius:6px;background:transparent;';
       iframe.sandbox='allow-same-origin';
       bodyEl.innerHTML='';bodyEl.appendChild(iframe);
-      iframe.onload=function(){try{iframe.style.height=Math.min(600,iframe.contentDocument.body.scrollHeight+20)+'px';}catch(e){}};
-      setTimeout(()=>{try{iframe.contentDocument.open();iframe.contentDocument.write('<html><body style="font-family:-apple-system,sans-serif;font-size:14px;color:#333;margin:10px;line-height:1.6;">'+body.content+'</body></html>');iframe.contentDocument.close();}catch(e){bodyEl.textContent=d.bodyPreview||'';}},50);
+      const darkCSS='html,body{background:#1a1d26!important;color:#c8cad0!important;font-family:-apple-system,BlinkMacSystemFont,sans-serif!important;font-size:14px!important;line-height:1.65!important;margin:12px!important;padding:0!important;word-wrap:break-word;overflow-wrap:break-word;}a{color:#6b9fff!important;}img{max-width:100%!important;height:auto!important;}table{max-width:100%!important;border-collapse:collapse;}td,th{padding:4px 8px;}pre,code{background:#12141a!important;color:#c8cad0!important;padding:4px 6px;border-radius:4px;font-size:13px;overflow-x:auto;max-width:100%;}blockquote{border-left:3px solid #2a2e3a;padding-left:12px;margin-left:0;color:#8b8fa3;}hr{border:none;border-top:1px solid #2a2e3a;}';
+      iframe.onload=function(){try{iframe.style.height=Math.min(2000,Math.max(200,iframe.contentDocument.body.scrollHeight+30))+'px';}catch(e){}};
+      setTimeout(()=>{try{iframe.contentDocument.open();iframe.contentDocument.write('<!DOCTYPE html><html><head><style>'+darkCSS+'</style></head><body>'+body.content+'</body></html>');iframe.contentDocument.close();}catch(e){bodyEl.textContent=d.bodyPreview||'';}},50);
     }else{
       bodyEl.style.whiteSpace='pre-wrap';
       bodyEl.textContent=body.content||d.bodyPreview||'';
@@ -487,6 +490,36 @@ function extractTask(){
   document.getElementById('task-modal').style.display='flex';
   setTimeout(()=>document.getElementById('tf-title').focus(),100);
 }
+// ── RESIZABLE EMAIL PANE ──
+let isDragging=false;
+function startDrag(e){
+  isDragging=true;
+  document.body.style.cursor='col-resize';
+  document.body.style.userSelect='none';
+  const drag=document.getElementById('email-drag');
+  drag.style.background='var(--accent)';
+  e.preventDefault();
+}
+document.addEventListener('mousemove',function(e){
+  if(!isDragging)return;
+  const split=document.getElementById('email-split');
+  const left=document.getElementById('email-left');
+  if(!split||!left)return;
+  const rect=split.getBoundingClientRect();
+  let newW=e.clientX-rect.left;
+  if(newW<280)newW=280;
+  if(newW>rect.width*0.65)newW=rect.width*0.65;
+  left.style.flex='0 0 '+newW+'px';
+});
+document.addEventListener('mouseup',function(){
+  if(!isDragging)return;
+  isDragging=false;
+  document.body.style.cursor='';
+  document.body.style.userSelect='';
+  const drag=document.getElementById('email-drag');
+  if(drag)drag.style.background='var(--border)';
+});
+
 let cLoaded=false;
 async function loadCal(){
   cLoaded=true;const el=document.getElementById('cevents');el.innerHTML='<div class="eld">Loading...</div>';
