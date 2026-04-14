@@ -142,6 +142,45 @@ export default async (req: Request, context: Context) => {
       });
     }
 
+    // ── CREATE CALENDAR EVENT ──
+    if (path === "/calendar" && req.method === "POST") {
+      const body = await req.json();
+      const { subject, start, end, location, attendees, body: eventBody } = body;
+
+      const event: Record<string, unknown> = {
+        subject: subject || "New Event",
+        start: { dateTime: start, timeZone: "Eastern Standard Time" },
+        end: { dateTime: end, timeZone: "Eastern Standard Time" },
+      };
+      if (location) event.location = { displayName: location };
+      if (eventBody) event.body = { contentType: "Text", content: eventBody };
+      if (attendees && Array.isArray(attendees) && attendees.length > 0) {
+        event.attendees = attendees.map((email: string) => ({
+          emailAddress: { address: email },
+          type: "required",
+        }));
+      }
+
+      const resp = await fetch(`${graphBase}/events`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(event),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers: { "Content-Type": "application/json" } });
+      }
+
+      const data = await resp.json();
+      return new Response(JSON.stringify({ success: true, event: { id: data.id, subject: data.subject, start: data.start, end: data.end } }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify({ error: "Unknown M365 endpoint" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },

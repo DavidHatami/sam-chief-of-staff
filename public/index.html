@@ -216,8 +216,59 @@
   </div>
 </div>
 <div id="p-calendar" class="page">
-  <div class="hdr"><div><h1>Calendar</h1><p class="hdr-sub">Google Calendar + M365 Calendar</p></div></div>
+  <div class="hdr"><div><h1>Calendar</h1><p class="hdr-sub">Google Calendar + M365 Calendar</p></div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="openAddEvent()" style="padding:8px 18px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">📅 Add Event</button>
+      <button onclick="openCalTask()" style="padding:8px 18px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">✅ Add Task</button>
+      <button onclick="loadCal()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
+    </div>
+  </div>
   <div id="cevents"><div class="eld">Loading calendar...</div></div>
+  <!-- Add Event Modal -->
+  <div id="event-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:500px;margin:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h3 style="font-size:16px;font-weight:600;">New Calendar Event</h3>
+        <button onclick="closeEventModal()" style="background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;">✕</button>
+      </div>
+      <input id="ev-title" type="text" placeholder="Event title..." style="width:100%;padding:10px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:14px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Date</label>
+          <input id="ev-date" type="date" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Start Time</label>
+          <input id="ev-start" type="time" value="09:00" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Duration</label>
+          <select id="ev-dur" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+            <option value="15">15 minutes</option>
+            <option value="30" selected>30 minutes</option>
+            <option value="45">45 minutes</option>
+            <option value="60">1 hour</option>
+            <option value="90">1.5 hours</option>
+            <option value="120">2 hours</option>
+            <option value="180">3 hours</option>
+            <option value="240">4 hours</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Location (optional)</label>
+          <input id="ev-loc" type="text" placeholder="Zoom, Office, etc." style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+        </div>
+      </div>
+      <textarea id="ev-notes" placeholder="Notes (optional)..." style="width:100%;padding:10px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;margin-bottom:12px;min-height:60px;resize:vertical;"></textarea>
+      <input id="ev-attendees" type="text" placeholder="Invite attendees (comma-separated emails, optional)" style="width:100%;padding:10px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;margin-bottom:16px;">
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="closeEventModal()" style="padding:8px 18px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:13px;cursor:pointer;">Cancel</button>
+        <button id="ev-save" onclick="saveEvent()" style="padding:8px 22px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">Create Event</button>
+      </div>
+    </div>
+  </div>
 </div>
 <div id="p-ai" class="page">
   <div class="hdr"><div><h1>AI Workbench</h1><p class="hdr-sub">Research and query across AI platforms — Claude, OpenAI, and more</p></div></div>
@@ -540,6 +591,75 @@ async function loadCal(){
     el.innerHTML=html;document.getElementById('sev').textContent=evs.length;
   }catch(e){el.innerHTML='<div class="eld">Error loading calendar.</div>';}
 }
+
+// ── CALENDAR EVENT CREATION ──
+function openAddEvent(){
+  const today=new Date();
+  document.getElementById('ev-title').value='';
+  document.getElementById('ev-date').value=today.toISOString().split('T')[0];
+  document.getElementById('ev-start').value='09:00';
+  document.getElementById('ev-dur').value='30';
+  document.getElementById('ev-loc').value='';
+  document.getElementById('ev-notes').value='';
+  document.getElementById('ev-attendees').value='';
+  document.getElementById('ev-save').textContent='Create Event';
+  document.getElementById('ev-save').disabled=false;
+  document.getElementById('event-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('ev-title').focus(),100);
+}
+function closeEventModal(){document.getElementById('event-modal').style.display='none';}
+document.getElementById('event-modal').addEventListener('click',function(e){if(e.target===this)closeEventModal();});
+
+async function saveEvent(){
+  const title=document.getElementById('ev-title').value.trim();
+  if(!title){document.getElementById('ev-title').style.borderColor='var(--red)';return;}
+  const date=document.getElementById('ev-date').value;
+  const startTime=document.getElementById('ev-start').value;
+  const dur=parseInt(document.getElementById('ev-dur').value);
+  const loc=document.getElementById('ev-loc').value.trim();
+  const notes=document.getElementById('ev-notes').value.trim();
+  const attendeesStr=document.getElementById('ev-attendees').value.trim();
+  if(!date||!startTime){return;}
+
+  const startDT=date+'T'+startTime+':00';
+  const endDate=new Date(date+'T'+startTime);
+  endDate.setMinutes(endDate.getMinutes()+dur);
+  const endH=String(endDate.getHours()).padStart(2,'0');
+  const endM=String(endDate.getMinutes()).padStart(2,'0');
+  const endDT=date+'T'+endH+':'+endM+':00';
+
+  const attendees=attendeesStr?attendeesStr.split(',').map(e=>e.trim()).filter(Boolean):[];
+
+  const btn=document.getElementById('ev-save');
+  btn.disabled=true;btn.textContent='Creating...';
+  try{
+    const r=await fetch('/api/m365/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject:title,start:startDT,end:endDT,location:loc,body:notes,attendees:attendees})});
+    const d=await r.json();
+    if(d.success){
+      btn.textContent='Created ✓';btn.style.background='var(--green)';
+      setTimeout(()=>{closeEventModal();btn.textContent='Create Event';btn.style.background='';btn.disabled=false;loadCal();fetchMCEvents();},1200);
+    }else{
+      btn.textContent='Error';btn.style.background='var(--red)';
+      setTimeout(()=>{btn.textContent='Create Event';btn.style.background='';btn.disabled=false;},2000);
+    }
+  }catch(e){btn.textContent='Failed';btn.disabled=false;setTimeout(()=>{btn.textContent='Create Event';},2000);}
+}
+
+function openCalTask(){
+  editingTaskId=null;
+  document.getElementById('modal-title').textContent='New Task';
+  document.getElementById('tf-title').value='';
+  document.getElementById('tf-desc').value='';
+  document.getElementById('tf-priority').value='normal';
+  document.getElementById('tf-status').value='todo';
+  document.getElementById('tf-cat').value='';
+  const today=new Date();
+  document.getElementById('tf-due').value=today.toISOString().split('T')[0];
+  document.getElementById('tf-save').textContent='Save Task';
+  document.getElementById('task-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('tf-title').focus(),100);
+}
+
 loadE('inbox',document.getElementById('btn-inbox'));
 
 // ── MINI CALENDAR ──
