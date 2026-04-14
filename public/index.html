@@ -490,8 +490,16 @@ function emailAction(type){
   const toEl=document.getElementById('ec-to');
   const subjEl=document.getElementById('ec-subj');
   const bodyEl=document.getElementById('ec-body');
-  const fromAddr=currentEmail.from?.emailAddress?.address||'';
-  const fromName=currentEmail.from?.emailAddress?.name||'';
+  // Handle both M365 object format and raw string format
+  let fromAddr='',fromName='';
+  if(currentEmail.from?.emailAddress){
+    fromAddr=currentEmail.from.emailAddress.address||'';
+    fromName=currentEmail.from.emailAddress.name||'';
+  }else if(typeof currentEmail.from==='string'){
+    const m=currentEmail.from.match(/^(.+?)\s*<(.+?)>$/);
+    if(m){fromName=m[1].replace(/"/g,'').trim();fromAddr=m[2];}
+    else{fromAddr=currentEmail.from;fromName=currentEmail.from;}
+  }
   const subj=currentEmail.subject||'';
   const preview=currentEmail.bodyPreview||currentEmail.body?.content||'';
   const plainBody=preview.substring(0,500);
@@ -506,7 +514,7 @@ function emailAction(type){
     const allTo=[fromAddr];
     (currentEmail.toRecipients||[]).forEach(t=>{
       const addr=t.emailAddress?.address||'';
-      if(addr&&addr!=='admin@edupolicy.ai'&&!allTo.includes(addr))allTo.push(addr);
+      if(addr&&addr!=='admin@edupolicy.ai'&&addr!=='dh30111@gmail.com'&&!allTo.includes(addr))allTo.push(addr);
     });
     toEl.value=allTo.join(', ');
     subjEl.value=subj.startsWith('Re:')?subj:'Re: '+subj;

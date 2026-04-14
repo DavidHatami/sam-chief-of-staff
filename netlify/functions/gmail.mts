@@ -88,9 +88,18 @@ export default async (req: Request, context: Context) => {
 
         const hdrs = msg.payload?.headers || [];
         const subject = getHeader(hdrs, "Subject");
-        const from = getHeader(hdrs, "From");
+        const fromRaw = getHeader(hdrs, "From");
         const to = getHeader(hdrs, "To");
         const date = getHeader(hdrs, "Date");
+
+        // Parse "Name <email>" format into M365-compatible structure
+        const fromMatch = fromRaw.match(/^(.+?)\s*<(.+?)>$/);
+        const fromObj = {
+          emailAddress: {
+            name: fromMatch ? fromMatch[1].replace(/"/g, "").trim() : fromRaw,
+            address: fromMatch ? fromMatch[2] : fromRaw,
+          },
+        };
 
         // Extract body
         let bodyHtml = "";
@@ -108,7 +117,7 @@ export default async (req: Request, context: Context) => {
         return new Response(JSON.stringify({
           id: msg.id,
           subject,
-          from,
+          from: fromObj,
           to,
           receivedDateTime: date,
           isRead: !msg.labelIds?.includes("UNREAD"),
