@@ -1,9 +1,11 @@
 import type { Context, Config } from "@netlify/functions";
 
 /**
- * Google Calendar Event Creation for SAM
+ * Google Calendar for SAM
  *
- * POST /api/gcal/event → Create event on Google Calendar
+ * GET  /api/gcal/events       → List events (default: next 30 days)
+ * GET  /api/gcal/events?start=X&end=Y → List events in range
+ * POST /api/gcal/event        → Create event on Google Calendar
  *
  * Uses same Google OAuth credentials as Gmail.
  * REQUIRED ENV VARS:
@@ -44,6 +46,46 @@ export default async (req: Request, context: Context) => {
 
   try {
     const token = await getGoogleToken();
+
+    // ── READ EVENTS ──
+    if ((path === "/events" || path === "/events/") && req.method === "GET") {
+      const start = url.searchParams.get("start") || new Date().toISOString();
+      const end = url.searchParams.get("end") || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const params = new URLSearchParams({
+        timeMin: start,
+        timeMax: end,
+        singleEvents: "true",
+        orderBy: "startTime",
+        maxResults: "100",
+        timeZone: "America/New_York",
+      });
+
+      const resp = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
+      }
+
+      const data = await resp.json();
+      const items = (data.items || []).map((e: any) => ({
+        id: e.id,
+        subject: e.summary || "(no title)",
+        start: { dateTime: e.start?.dateTime || e.start?.date },
+        end: { dateTime: e.end?.dateTime || e.end?.date },
+        location: e.location ? { displayName: e.location } : null,
+        organizer: e.organizer,
+        isAllDay: !e.start?.dateTime,
+        source: "google",
+      }));
+
+      // Return in M365-compatible format so frontend can merge easily
+      return new Response(JSON.stringify({ value: items }), { headers });
+    }
 
     // ── CREATE EVENT ──
     if ((path === "/event" || path === "/event/") && req.method === "POST") {

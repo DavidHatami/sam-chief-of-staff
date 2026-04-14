@@ -752,13 +752,41 @@ async function sendSAM(){
   msgs.innerHTML+=`<div class="ai-msg bot" id="sam-typing" style="margin-bottom:10px;"><div class="av" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);">S</div><div class="bubble" style="font-size:13px;color:var(--text-muted);">Thinking...</div></div>`;
   msgs.scrollTop=msgs.scrollHeight;
 
-  // Build context — feed SAM your current state
-  let context='';
+  // Build RICH context — feed SAM real data, not just counts
+  let context='\n\n[SAM CONTEXT — Current State as of '+new Date().toLocaleString('en-US',{timeZone:'America/New_York'})+']';
   try{
-    const pending=allTasks?allTasks.filter(t=>t.status==='todo'||t.status==='in-progress').length:0;
-    const urgent=allTasks?allTasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='canceled').length:0;
-    const review=allTasks?allTasks.filter(t=>t.status==='review').length:0;
-    context=`\n\n[CURRENT STATE] Pending tasks: ${pending}. Urgent: ${urgent}. Review queue: ${review}. Time: ${new Date().toLocaleString('en-US',{timeZone:'America/New_York'})}.`;
+    // Tasks
+    const activeTasks=allTasks?allTasks.filter(t=>t.status==='todo'||t.status==='in-progress'):[];
+    const urgentTasks=activeTasks.filter(t=>t.priority==='urgent');
+    const reviewTasks=allTasks?allTasks.filter(t=>t.status==='review'):[];
+    const overdueTasks=activeTasks.filter(t=>{if(!t.dueDate)return false;return new Date(t.dueDate+'T23:59:59')<new Date();});
+    context+=`\nPending: ${activeTasks.length} | Urgent: ${urgentTasks.length} | Review Queue: ${reviewTasks.length} | Overdue: ${overdueTasks.length}`;
+    if(urgentTasks.length){context+='\nURGENT TASKS: '+urgentTasks.map(t=>'"'+t.title+'"'+(t.dueDate?' (due '+t.dueDate+')':'')).join('; ');}
+    if(overdueTasks.length){context+='\nOVERDUE: '+overdueTasks.map(t=>'"'+t.title+'" due '+t.dueDate).join('; ');}
+    const top5=activeTasks.slice(0,5);
+    if(top5.length){context+='\nTop tasks: '+top5.map(t=>'"'+t.title+'" ['+t.priority+']'+(t.dueDate?' due '+t.dueDate:'')+(t.category?' ('+t.category+')':'')).join('; ');}
+    if(reviewTasks.length){context+='\nReview queue: '+reviewTasks.slice(0,3).map(t=>'"'+t.title+'"').join('; ');}
+  }catch(e){}
+  try{
+    // Calendar — fetch today's events
+    const todayStart=new Date();todayStart.setHours(0,0,0,0);
+    const todayEnd=new Date();todayEnd.setHours(23,59,59,999);
+    const [calM,calG]=await Promise.allSettled([
+      fetch('/api/m365/calendar?start='+encodeURIComponent(todayStart.toISOString())+'&end='+encodeURIComponent(todayEnd.toISOString())),
+      fetch('/api/gcal/events?start='+encodeURIComponent(todayStart.toISOString())+'&end='+encodeURIComponent(todayEnd.toISOString()))
+    ]);
+    let todayEvents=[];
+    if(calM.status==='fulfilled'){const d=await calM.value.json();(d.value||[]).forEach(e=>todayEvents.push(e.subject+' at '+new Date(e.start?.dateTime+'Z').toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})));}
+    if(calG.status==='fulfilled'){const d=await calG.value.json();(d.value||[]).forEach(e=>{const raw=e.start?.dateTime||'';const t=raw.includes('Z')?new Date(raw):new Date(raw);todayEvents.push(e.subject+' at '+t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}));});}
+    if(todayEvents.length){context+='\nToday\'s calendar ('+todayEvents.length+' events): '+todayEvents.join('; ');}
+    else{context+='\nCalendar: No events today.';}
+  }catch(e){}
+  try{
+    // Recent emails — just subjects and senders
+    const emailR=await fetch('/api/m365/mail?folder=inbox&top=5');
+    const emailD=await emailR.json();
+    const recent=(emailD.value||[]).filter(m=>!m.isRead).slice(0,5);
+    if(recent.length){context+='\nUnread emails ('+recent.length+'): '+recent.map(m=>'"'+(m.subject||'?')+'" from '+(m.from?.emailAddress?.name||'?')).join('; ');}
   }catch(e){}
 
   try{
@@ -1294,22 +1322,53 @@ document.addEventListener('mouseup',function(){
 
 let cLoaded=false;
 async function loadCal(){
-  cLoaded=true;const el=document.getElementById('cevents');el.innerHTML='<div class="eld">Loading...</div>';
+  cLoaded=true;const el=document.getElementById('cevents');el.innerHTML='<div class="eld">Loading from M365 + Google Calendar...</div>';
   try{
-    const r=await fetch('/api/m365/calendar');const d=await r.json();
-    const evs=d.value||[];
-    if(!evs.length){el.innerHTML='<div class="eld">No events this week.</div>';return;}
+    const [m365Res,gcalRes]=await Promise.allSettled([
+      fetch('/api/m365/calendar'),
+      fetch('/api/gcal/events')
+    ]);
+    let allEvs=[];
+    // M365 events
+    if(m365Res.status==='fulfilled'){
+      const d=await m365Res.value.json();
+      (d.value||[]).forEach(e=>{e._src='M365';allEvs.push(e);});
+    }
+    // Google Calendar events
+    if(gcalRes.status==='fulfilled'){
+      const d=await gcalRes.value.json();
+      (d.value||[]).forEach(e=>{e._src='Google';allEvs.push(e);});
+    }
+    // Deduplicate by subject+start (dual-synced events appear in both)
+    const seen=new Set();
+    allEvs=allEvs.filter(e=>{
+      const key=(e.subject||'').toLowerCase()+'|'+(e.start?.dateTime||'').substring(0,16);
+      if(seen.has(key))return false;
+      seen.add(key);return true;
+    });
+    // Sort by start time
+    allEvs.sort((a,b)=>new Date(a.start?.dateTime||0).getTime()-new Date(b.start?.dateTime||0).getTime());
+
+    if(!allEvs.length){el.innerHTML='<div class="eld">No events this week.</div>';document.getElementById('sev').textContent='0';return;}
     let html='',ld='';
-    evs.forEach(e=>{
-      const s=new Date(e.start?.dateTime+'Z');
+    allEvs.forEach(e=>{
+      const raw=e.start?.dateTime||'';
+      const s=raw.includes('Z')||raw.includes('+')?new Date(raw):new Date(raw+'Z');
       const ds=s.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',timeZone:'America/New_York'});
       if(ds!==ld){html+=`<div class="cdh">${ds}</div>`;ld=ds;}
       const ts=s.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
-      const en=new Date(e.end?.dateTime+'Z');
+      const rawEnd=e.end?.dateTime||'';
+      const en=rawEnd.includes('Z')||rawEnd.includes('+')?new Date(rawEnd):new Date(rawEnd+'Z');
       const te=en.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
-      html+=`<div class="ce"><div class="ct">${ts} — ${te}</div><div class="cn">${esc(e.subject||'(no title)')}</div>${e.location?.displayName?'<div class="cl">'+esc(e.location.displayName)+'</div>':''}</div>`;
+      const srcBadge=e._src==='Google'?'<span style="font-size:9px;color:var(--green);font-family:var(--mono);margin-left:8px;">GOOGLE</span>':'';
+      html+=`<div class="ce"><div class="ct">${ts} — ${te}${srcBadge}</div><div class="cn">${esc(e.subject||'(no title)')}</div>${e.location?.displayName?'<div class="cl">'+esc(e.location.displayName)+'</div>':''}</div>`;
     });
-    el.innerHTML=html;document.getElementById('sev').textContent=evs.length;
+    el.innerHTML=html;
+    // Count today's events for dashboard
+    const today=new Date();today.setHours(0,0,0,0);
+    const tomorrow=new Date(today);tomorrow.setDate(tomorrow.getDate()+1);
+    const todayCount=allEvs.filter(e=>{const d=new Date(e.start?.dateTime||0);return d>=today&&d<tomorrow;}).length;
+    document.getElementById('sev').textContent=todayCount||allEvs.length;
   }catch(e){el.innerHTML='<div class="eld">Error loading calendar.</div>';}
 }
 
@@ -1436,13 +1495,19 @@ async function fetchMCEvents(){
   try{
     const s=new Date(mcY,mcM,1).toISOString();
     const e=new Date(mcY,mcM+1,0,23,59,59).toISOString();
-    const r=await fetch('/api/m365/calendar?start='+encodeURIComponent(s)+'&end='+encodeURIComponent(e));
-    const d=await r.json();
+    const [m365Res,gcalRes]=await Promise.allSettled([
+      fetch('/api/m365/calendar?start='+encodeURIComponent(s)+'&end='+encodeURIComponent(e)),
+      fetch('/api/gcal/events?start='+encodeURIComponent(s)+'&end='+encodeURIComponent(e))
+    ]);
     mcEventDays=new Set();
-    (d.value||[]).forEach(ev=>{
-      const dt=new Date(ev.start?.dateTime+'Z');
-      mcEventDays.add(dt.getDate());
-    });
+    if(m365Res.status==='fulfilled'){
+      const d=await m365Res.value.json();
+      (d.value||[]).forEach(ev=>{const dt=new Date((ev.start?.dateTime||'')+'Z');mcEventDays.add(dt.getDate());});
+    }
+    if(gcalRes.status==='fulfilled'){
+      const d=await gcalRes.value.json();
+      (d.value||[]).forEach(ev=>{const raw=ev.start?.dateTime||'';const dt=raw.includes('Z')||raw.includes('+')?new Date(raw):new Date(raw);mcEventDays.add(dt.getDate());});
+    }
     renderMC();
   }catch(e){}
 }
@@ -1554,8 +1619,9 @@ async function loadEvents(){
   const start=new Date(now.getTime()-7*24*60*60*1000).toISOString();
   const end=new Date(now.getTime()+30*24*60*60*1000).toISOString();
 
-  const [m365Res,zoomRes,tasksRes]=await Promise.allSettled([
+  const [m365Res,gcalRes,zoomRes,tasksRes]=await Promise.allSettled([
     fetch('/api/m365/calendar?start='+encodeURIComponent(start)+'&end='+encodeURIComponent(end)),
+    fetch('/api/gcal/events?start='+encodeURIComponent(start)+'&end='+encodeURIComponent(end)),
     fetch('/api/zoom/meetings'),
     fetch('/api/tasks/')
   ]);
@@ -1575,6 +1641,31 @@ async function loadEvents(){
           location:e.location?.displayName||'',
           meta:'M365 Calendar'
         });
+      });
+    }
+  }catch(e){}
+
+  // Process Google Calendar events
+  try{
+    if(gcalRes.status==='fulfilled'){
+      const d=await gcalRes.value.json();
+      (d.value||[]).forEach(e=>{
+        const raw=e.start?.dateTime||'';
+        const s=raw.includes('Z')||raw.includes('+')?new Date(raw):new Date(raw);
+        const rawEnd=e.end?.dateTime||'';
+        const en=rawEnd.includes('Z')||rawEnd.includes('+')?new Date(rawEnd):new Date(rawEnd);
+        // Skip if duplicate of M365 event (dual-synced)
+        const isDupe=allEvents.some(x=>x.source==='calendar'&&Math.abs(x.datetime-s)<120000&&x.title.toLowerCase()===(e.subject||'').toLowerCase());
+        if(!isDupe){
+          allEvents.push({
+            source:'calendar',icon:'📅',color:'var(--green)',
+            title:e.subject||'(no title)',
+            datetime:s,
+            endtime:en,
+            location:e.location?.displayName||'',
+            meta:'Google Calendar'
+          });
+        }
       });
     }
   }catch(e){}
