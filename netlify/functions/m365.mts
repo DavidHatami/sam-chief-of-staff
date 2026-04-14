@@ -60,6 +60,26 @@ export default async (req: Request, context: Context) => {
     if (path === "/mail" && req.method === "GET") {
       const top = url.searchParams.get("top") || "20";
       const folder = url.searchParams.get("folder") || "inbox";
+      const msgId = url.searchParams.get("id");
+
+      // Single message with full body
+      if (msgId) {
+        const resp = await fetch(
+          `${graphBase}/messages/${msgId}?$select=subject,from,toRecipients,receivedDateTime,isRead,body,bodyPreview`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await resp.json();
+        // Mark as read
+        fetch(`${graphBase}/messages/${msgId}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ isRead: true }),
+        }).catch(() => {});
+        return new Response(JSON.stringify(data), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       const resp = await fetch(
         `${graphBase}/mailFolders/${folder}/messages?$top=${top}&$select=subject,from,receivedDateTime,isRead,bodyPreview&$orderby=receivedDateTime DESC`,
         { headers: { Authorization: `Bearer ${token}` } }

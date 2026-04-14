@@ -174,7 +174,23 @@
     <div class="sp"></div><div class="ec" id="ecount"></div>
     <button onclick="loadE('inbox',document.getElementById('btn-inbox'))">↻ Refresh</button>
   </div>
-  <div class="card" style="padding:0;overflow:hidden;"><div class="el" id="elist" style="max-height:calc(100vh - 260px);overflow-y:auto;"><div class="eld">Loading emails...</div></div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;min-height:calc(100vh - 220px);">
+    <div class="card" style="padding:0;overflow:hidden;"><div class="el" id="elist" style="max-height:calc(100vh - 240px);overflow-y:auto;"><div class="eld">Loading emails...</div></div></div>
+    <div class="card" id="ereader" style="overflow-y:auto;max-height:calc(100vh - 240px);display:flex;flex-direction:column;">
+      <div class="eld" id="ereader-empty">Click an email to read it</div>
+      <div id="ereader-content" style="display:none;">
+        <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+          <div id="er-subject" style="font-size:16px;font-weight:600;margin-bottom:6px;"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+            <div id="er-from" style="font-size:13px;color:var(--accent);"></div>
+            <div id="er-date" style="font-size:11px;color:var(--text-muted);font-family:var(--mono);"></div>
+          </div>
+          <div id="er-to" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div>
+        </div>
+        <div id="er-body" style="font-size:13px;line-height:1.7;color:var(--text-dim);flex:1;overflow-y:auto;"></div>
+      </div>
+    </div>
+  </div>
 </div>
 <div id="p-calendar" class="page">
   <div class="hdr"><div><h1>Calendar</h1><p class="hdr-sub">Google Calendar + M365 Calendar</p></div></div>
@@ -314,7 +330,8 @@ async function loadE(folder,btn){
       const prev=m.bodyPreview||'';
       const dt=new Date(m.receivedDateTime);
       const ts=dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
-      html+=`<div class="ei${u?' unread':''}"><div class="edot ${u?'u':'r'}"></div><div style="min-width:0"><div class="ef">${esc(fn)}</div><div class="es">${esc(subj)}</div><div class="ep">${esc(prev.substring(0,120))}</div></div><div class="et">${ts}</div></div>`;
+      const mid=encodeURIComponent(m.id||'');
+      html+=`<div class="ei${u?' unread':''}" onclick="readEmail('${mid}',this)" style="cursor:pointer;"><div class="edot ${u?'u':'r'}"></div><div style="min-width:0"><div class="ef">${esc(fn)}</div><div class="es">${esc(subj)}</div><div class="ep">${esc(prev.substring(0,120))}</div></div><div class="et">${ts}</div></div>`;
     });
     list.innerHTML=html||'<div class="eld">No emails.</div>';
     document.getElementById('ecount').textContent=msgs.length+' messages'+(ur?' ('+ur+' unread)':'');
@@ -325,6 +342,43 @@ async function loadE(folder,btn){
     let dhtml='';for(let i=0;i<Math.min(8,items.length);i++)dhtml+=items[i].outerHTML;
     de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
   }catch(e){list.innerHTML='<div class="eld">Error loading emails.</div>';}
+}
+async function readEmail(mid,row){
+  if(!mid)return;
+  const empty=document.getElementById('ereader-empty');
+  const content=document.getElementById('ereader-content');
+  if(!empty||!content)return;
+  empty.textContent='Loading...';empty.style.display='block';content.style.display='none';
+  document.querySelectorAll('.ei').forEach(r=>{r.style.background='';r.style.borderLeft='';});
+  if(row){row.style.background='var(--surface-2)';row.style.borderLeft='3px solid var(--accent)';}
+  try{
+    const r=await fetch('/api/m365/mail?id='+mid);
+    const d=await r.json();
+    if(d.error){empty.textContent='Error: '+d.error;return;}
+    document.getElementById('er-subject').textContent=d.subject||'(no subject)';
+    const fromName=d.from?.emailAddress?.name||'';
+    const fromAddr=d.from?.emailAddress?.address||'';
+    document.getElementById('er-from').textContent=fromName+(fromAddr?' <'+fromAddr+'>':'');
+    const dt=new Date(d.receivedDateTime);
+    document.getElementById('er-date').textContent=dt.toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+    const toList=(d.toRecipients||[]).map(t=>t.emailAddress?.address||'').join(', ');
+    document.getElementById('er-to').textContent=toList?'To: '+toList:'';
+    const body=d.body||{};
+    const bodyEl=document.getElementById('er-body');
+    if(body.contentType==='html'){
+      const iframe=document.createElement('iframe');
+      iframe.style.cssText='width:100%;border:none;min-height:300px;background:#fff;border-radius:6px;';
+      iframe.sandbox='allow-same-origin';
+      bodyEl.innerHTML='';bodyEl.appendChild(iframe);
+      iframe.onload=function(){try{iframe.style.height=Math.min(600,iframe.contentDocument.body.scrollHeight+20)+'px';}catch(e){}};
+      setTimeout(()=>{try{iframe.contentDocument.open();iframe.contentDocument.write('<html><body style="font-family:-apple-system,sans-serif;font-size:14px;color:#333;margin:10px;line-height:1.6;">'+body.content+'</body></html>');iframe.contentDocument.close();}catch(e){bodyEl.textContent=d.bodyPreview||'';}},50);
+    }else{
+      bodyEl.style.whiteSpace='pre-wrap';
+      bodyEl.textContent=body.content||d.bodyPreview||'';
+    }
+    empty.style.display='none';content.style.display='block';
+    if(row){row.classList.remove('unread');const dot=row.querySelector('.edot');if(dot)dot.className='edot r';}
+  }catch(e){empty.textContent='Error loading email.';}
 }
 let cLoaded=false;
 async function loadCal(){
