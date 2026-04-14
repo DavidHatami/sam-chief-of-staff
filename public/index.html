@@ -100,6 +100,23 @@
 .email-accts{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
 .email-acct{padding:6px 12px;border-radius:6px;font-size:11px;background:var(--surface);border:1px solid var(--border);cursor:pointer;color:var(--text-dim);transition:all 0.15s;}
 .email-acct:hover{border-color:var(--accent);color:var(--text);}.email-acct.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
+.etb-f{padding:6px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;}
+.etb-f:hover{border-color:var(--accent);color:var(--text);}.etb-f.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
+.ti{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;transition:background 0.1s;cursor:pointer;}
+.ti:hover{background:var(--surface-2);}.ti:last-child{border-bottom:none;}
+.ti-check{width:20px;height:20px;border-radius:6px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.15s;font-size:12px;}
+.ti-check:hover{border-color:var(--accent);}
+.ti-check.done{background:var(--green);border-color:var(--green);color:#fff;}
+.ti-check.ip{background:var(--amber-dim);border-color:var(--amber);}
+.ti-body{flex:1;min-width:0;}
+.ti-title{font-size:14px;font-weight:500;}.ti-title.done{text-decoration:line-through;color:var(--text-muted);}
+.ti-meta{font-size:11px;color:var(--text-muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;}
+.ti-actions{display:flex;gap:6px;opacity:0;transition:opacity 0.15s;}
+.ti:hover .ti-actions{opacity:1;}
+.ti-btn{padding:4px 10px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;font-family:var(--font);}
+.ti-btn:hover{border-color:var(--accent);color:var(--text);}.ti-btn.del:hover{border-color:var(--red);color:var(--red);}
+.ti-priority{width:4px;height:32px;border-radius:2px;flex-shrink:0;}
+.ti-priority.urgent{background:var(--red);}.ti-priority.high{background:var(--amber);}.ti-priority.normal{background:var(--accent);}.ti-priority.low{background:var(--text-muted);}
 @media(max-width:768px){.sidebar{width:60px;}.sb-brand .bt,.sb-brand .bs,.ni span:not(.nic),.ns,.sb-foot span{display:none;}.sb-brand{padding:14px 12px;justify-content:center;}.ni{justify-content:center;padding:10px;}.main{margin-left:60px;}.stats,.ig{grid-template-columns:repeat(2,1fr);}.g2{grid-template-columns:1fr;}}
 </style>
 </head>
@@ -111,6 +128,7 @@
     <div class="ni active" onclick="go('dash',this)"><span class="nic">📊</span><span>Dashboard</span></div>
     <div class="ni" onclick="go('email',this)"><span class="nic">📧</span><span>Email</span><span class="nib" id="ebadge" style="display:none"></span></div>
     <div class="ni" onclick="go('calendar',this)"><span class="nic">📅</span><span>Calendar</span></div>
+    <div class="ni" onclick="go('tasks',this)"><span class="nic">✅</span><span>Tasks</span><span class="nib" id="tbadge" style="display:none"></span></div>
     <div class="ns">Tools</div>
     <div class="ni" onclick="go('ai',this)"><span class="nic">🧠</span><span>AI Workbench</span></div>
     <div class="ni" onclick="go('schedule',this)"><span class="nic">🔗</span><span>Scheduling</span></div>
@@ -124,8 +142,8 @@
   <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;margin-bottom:24px;">
     <div class="stats" style="margin-bottom:0;">
       <div class="st" style="cursor:pointer;" onclick="go('calendar',document.querySelectorAll('.ni')[2])"><div class="l">Today's Events</div><div class="v" id="sev">—</div><div class="s">Across all calendars</div></div>
-      <div class="st g"><div class="l">Tasks Complete</div><div class="v">12</div><div class="s">This week</div></div>
-      <div class="st a" style="cursor:pointer;" onclick="showPending()"><div class="l">Pending Actions</div><div class="v">5</div><div class="s">Click to view →</div></div>
+      <div class="st g" style="cursor:pointer;" onclick="go('tasks',document.querySelectorAll('.ni')[3])"><div class="l">Tasks Complete</div><div class="v" id="sdone">—</div><div class="s">This week</div></div>
+      <div class="st a" style="cursor:pointer;" onclick="go('tasks',document.querySelectorAll('.ni')[3])"><div class="l">Pending Actions</div><div class="v" id="spending">—</div><div class="s">Click to view →</div></div>
       <div class="st r" style="cursor:pointer;" onclick="go('email',document.querySelectorAll('.ni')[1])"><div class="l">Unread Email</div><div class="v" id="sur">—</div><div class="s">Click to view →</div></div>
     </div>
     <div class="mcal">
@@ -134,11 +152,8 @@
     </div>
   </div>
   <div class="g2">
-    <div class="card"><div class="ch"><h3>Priority Tasks</h3><span class="badge">TODAY</span></div>
-      <div class="tr"><div><div class="tn">Finalize AI Ethics course module 3</div><div class="tm">EduPolicy.ai LMS</div></div><span class="tag tu">URGENT</span></div>
-      <div class="tr"><div><div class="tn">Review admissions pipeline data</div><div class="tm">Consulting engagement</div></div><span class="tag tp">PENDING</span></div>
-      <div class="tr"><div><div class="tn">Grade submissions — English Comp</div><div class="tm">Post University</div></div><span class="tag tu">URGENT</span></div>
-      <div class="tr"><div><div class="tn">Scheduling page deployed</div><div class="tm">sam-chief-of-staff.netlify.app/book</div></div><span class="tag td">DONE</span></div>
+    <div class="card"><div class="ch"><h3>Priority Tasks</h3><span class="badge" style="cursor:pointer" onclick="go('tasks',document.querySelectorAll('.ni')[3])">VIEW ALL</span></div>
+      <div id="dtasks"><div class="eld">Loading tasks...</div></div>
     </div>
     <div class="card"><div class="ch"><h3>Latest Emails</h3><span class="badge" style="cursor:pointer" onclick="go('email',document.querySelectorAll('.ni')[1])">VIEW ALL</span></div>
       <div id="demails"><div class="eld">Loading Outlook...</div></div>
@@ -197,6 +212,69 @@
   <div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"><div><div class="tn">Speaking Engagement Inquiry</div><div class="tm">30 min — keynote, workshop, or podcast</div></div><div style="display:flex;gap:8px;align-items:center;"><code style="font-size:11px;color:var(--accent);background:var(--surface-2);padding:6px 10px;border-radius:6px;">/book?type=speaking</code><button onclick="cp('/book?type=speaking',this)" style="padding:6px 12px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-size:12px;cursor:pointer;">Copy</button></div></div></div>
   <div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"><div><div class="tn">Quick Check-In</div><div class="tm">15 min — brief follow-up</div></div><div style="display:flex;gap:8px;align-items:center;"><code style="font-size:11px;color:var(--accent);background:var(--surface-2);padding:6px 10px;border-radius:6px;">/book?type=checkin</code><button onclick="cp('/book?type=checkin',this)" style="padding:6px 12px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-size:12px;cursor:pointer;">Copy</button></div></div></div>
 </div>
+<div id="p-tasks" class="page">
+  <div class="hdr"><div><h1>Tasks</h1><p class="hdr-sub">Manage your to-do list — persistent across sessions</p></div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="openAddTask()" style="padding:8px 18px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">＋ Add Task</button>
+      <button onclick="loadTasks()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
+    <button class="etb-f active" onclick="filterTasks('all',this)">All</button>
+    <button class="etb-f" onclick="filterTasks('todo',this)">To Do</button>
+    <button class="etb-f" onclick="filterTasks('in-progress',this)">In Progress</button>
+    <button class="etb-f" onclick="filterTasks('done',this)">Done</button>
+    <button class="etb-f" onclick="filterTasks('urgent',this)">Urgent</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <div id="tlist"><div class="eld">Loading tasks...</div></div>
+  </div>
+  <!-- Add/Edit Task Modal -->
+  <div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:none;align-items:center;justify-content:center;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:480px;margin:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h3 id="modal-title" style="font-size:16px;font-weight:600;">New Task</h3>
+        <button onclick="closeModal()" style="background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;">✕</button>
+      </div>
+      <input id="tf-title" type="text" placeholder="Task title..." style="width:100%;padding:10px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:14px;margin-bottom:12px;">
+      <textarea id="tf-desc" placeholder="Description (optional)..." style="width:100%;padding:10px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;margin-bottom:12px;min-height:60px;resize:vertical;"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Priority</label>
+          <select id="tf-priority" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+            <option value="urgent">🔴 Urgent</option>
+            <option value="high">🟠 High</option>
+            <option value="normal" selected>🔵 Normal</option>
+            <option value="low">⚪ Low</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Status</label>
+          <select id="tf-status" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+            <option value="todo" selected>To Do</option>
+            <option value="in-progress">In Progress</option>
+            <option value="done">Done</option>
+            <option value="canceled">Canceled</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Category</label>
+          <input id="tf-cat" type="text" placeholder="e.g., EduPolicy, Teaching..." style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Due Date</label>
+          <input id="tf-due" type="date" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="closeModal()" style="padding:8px 18px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:13px;cursor:pointer;">Cancel</button>
+        <button id="tf-save" onclick="saveTask()" style="padding:8px 22px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">Save Task</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="p-integrations" class="page">
   <div class="hdr"><h1>Integrations</h1></div>
   <div class="ig">
@@ -210,7 +288,7 @@
 </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 function tick(){const n=new Date(),h=n.getHours(),g=h<12?'Morning':h<17?'Afternoon':'Evening';document.getElementById('greeting').textContent='Good '+g+', Dr. Hatami';document.getElementById('clock').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/New_York'});document.getElementById('datestr').textContent=n.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});}
 setInterval(tick,1000);tick();
@@ -364,6 +442,203 @@ async function sendAI(){
   btn.disabled=false;btn.textContent='Send';
   msgs.scrollTop=msgs.scrollHeight;
 }
+
+// ── TASKS SYSTEM ──
+let allTasks=[];
+let taskFilter='all';
+let editingTaskId=null;
+
+async function loadTasks(){
+  try{
+    const r=await fetch('/api/tasks/');
+    const d=await r.json();
+    allTasks=d.tasks||[];
+    renderTasks();
+    updateDashboardTasks();
+  }catch(e){
+    document.getElementById('tlist').innerHTML='<div class="eld">Error loading tasks. API may be initializing — try refreshing.</div>';
+  }
+}
+
+function renderTasks(){
+  const list=document.getElementById('tlist');
+  let tasks=allTasks;
+  if(taskFilter==='urgent') tasks=tasks.filter(t=>t.priority==='urgent'&&t.status!=='done');
+  else if(taskFilter!=='all') tasks=tasks.filter(t=>t.status===taskFilter);
+
+  if(!tasks.length){
+    list.innerHTML='<div class="eld">'+(taskFilter==='all'?'No tasks yet. Click "+ Add Task" to get started.':'No tasks match this filter.')+'</div>';
+    return;
+  }
+
+  let html='';
+  tasks.forEach(t=>{
+    const isDone=t.status==='done';
+    const isIP=t.status==='in-progress';
+    const checkClass=isDone?'done':isIP?'ip':'';
+    const checkIcon=isDone?'✓':isIP?'◐':'';
+    const priClass=t.priority||'normal';
+    const statusLabel={'todo':'TO DO','in-progress':'IN PROGRESS','done':'DONE','canceled':'CANCELED'}[t.status]||'TO DO';
+    const statusClass={'todo':'tu','in-progress':'tp','done':'td','canceled':''}[t.status]||'tu';
+    const metaParts=[];
+    if(t.category) metaParts.push(t.category);
+    if(t.dueDate){
+      const due=new Date(t.dueDate+'T00:00:00');
+      const now=new Date();now.setHours(0,0,0,0);
+      const diff=Math.ceil((due-now)/(1000*60*60*24));
+      let dueStr=due.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      if(diff<0&&!isDone) dueStr='⚠️ Overdue: '+dueStr;
+      else if(diff===0) dueStr='📌 Due today';
+      else if(diff===1) dueStr='Due tomorrow';
+      metaParts.push(dueStr);
+    }
+    html+=`<div class="ti" data-id="${t.id}">
+      <div class="ti-priority ${priClass}"></div>
+      <div class="ti-check ${checkClass}" onclick="event.stopPropagation();toggleTask('${t.id}')">${checkIcon}</div>
+      <div class="ti-body" onclick="editTask('${t.id}')">
+        <div class="ti-title${isDone?' done':''}">${esc(t.title)}</div>
+        <div class="ti-meta">
+          <span class="tag ${statusClass}">${statusLabel}</span>
+          ${metaParts.map(m=>'<span>'+esc(m)+'</span>').join('')}
+        </div>
+      </div>
+      <div class="ti-actions">
+        <button class="ti-btn" onclick="event.stopPropagation();editTask('${t.id}')">Edit</button>
+        <button class="ti-btn del" onclick="event.stopPropagation();deleteTask('${t.id}')">Delete</button>
+      </div>
+    </div>`;
+  });
+  list.innerHTML=html;
+}
+
+function filterTasks(f,el){
+  taskFilter=f;
+  document.querySelectorAll('.etb-f').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderTasks();
+}
+
+async function toggleTask(id){
+  const t=allTasks.find(x=>x.id===id);
+  if(!t)return;
+  const nextStatus=t.status==='done'?'todo':t.status==='in-progress'?'done':'in-progress';
+  try{
+    await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:nextStatus})});
+    t.status=nextStatus;
+    t.updatedAt=new Date().toISOString();
+    renderTasks();
+    updateDashboardTasks();
+  }catch(e){}
+}
+
+function openAddTask(){
+  editingTaskId=null;
+  document.getElementById('modal-title').textContent='New Task';
+  document.getElementById('tf-title').value='';
+  document.getElementById('tf-desc').value='';
+  document.getElementById('tf-priority').value='normal';
+  document.getElementById('tf-status').value='todo';
+  document.getElementById('tf-cat').value='';
+  document.getElementById('tf-due').value='';
+  document.getElementById('tf-save').textContent='Save Task';
+  document.getElementById('task-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('tf-title').focus(),100);
+}
+
+function editTask(id){
+  const t=allTasks.find(x=>x.id===id);
+  if(!t)return;
+  editingTaskId=id;
+  document.getElementById('modal-title').textContent='Edit Task';
+  document.getElementById('tf-title').value=t.title||'';
+  document.getElementById('tf-desc').value=t.description||'';
+  document.getElementById('tf-priority').value=t.priority||'normal';
+  document.getElementById('tf-status').value=t.status||'todo';
+  document.getElementById('tf-cat').value=t.category||'';
+  document.getElementById('tf-due').value=t.dueDate||'';
+  document.getElementById('tf-save').textContent='Update Task';
+  document.getElementById('task-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('tf-title').focus(),100);
+}
+
+function closeModal(){
+  document.getElementById('task-modal').style.display='none';
+  editingTaskId=null;
+}
+
+async function saveTask(){
+  const title=document.getElementById('tf-title').value.trim();
+  if(!title){document.getElementById('tf-title').style.borderColor='var(--red)';return;}
+  const payload={
+    title:title,
+    description:document.getElementById('tf-desc').value.trim(),
+    priority:document.getElementById('tf-priority').value,
+    status:document.getElementById('tf-status').value,
+    category:document.getElementById('tf-cat').value.trim(),
+    dueDate:document.getElementById('tf-due').value
+  };
+  const btn=document.getElementById('tf-save');
+  btn.disabled=true;btn.textContent='Saving...';
+  try{
+    if(editingTaskId){
+      await fetch('/api/tasks/'+editingTaskId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    }else{
+      await fetch('/api/tasks/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    }
+    closeModal();
+    await loadTasks();
+  }catch(e){
+    btn.textContent='Error — retry';
+  }
+  btn.disabled=false;
+  btn.textContent=editingTaskId?'Update Task':'Save Task';
+}
+
+async function deleteTask(id){
+  if(!confirm('Delete this task?'))return;
+  try{
+    await fetch('/api/tasks/'+id,{method:'DELETE'});
+    allTasks=allTasks.filter(t=>t.id!==id);
+    renderTasks();
+    updateDashboardTasks();
+  }catch(e){}
+}
+
+function updateDashboardTasks(){
+  // Update dashboard priority tasks card
+  const dtasks=document.getElementById('dtasks');
+  const top4=allTasks.filter(t=>t.status!=='done'&&t.status!=='canceled').slice(0,4);
+  if(!top4.length){
+    dtasks.innerHTML='<div class="eld">No pending tasks. Click "VIEW ALL" to add some.</div>';
+  }else{
+    let html='';
+    top4.forEach(t=>{
+      const tagClass=t.priority==='urgent'?'tu':t.status==='in-progress'?'tp':'tu';
+      const tagLabel=t.priority==='urgent'?'URGENT':t.status==='in-progress'?'IN PROGRESS':'PENDING';
+      html+=`<div class="tr" style="cursor:pointer;" onclick="go('tasks',document.querySelectorAll('.ni')[3])"><div><div class="tn">${esc(t.title)}</div><div class="tm">${esc(t.category||'Uncategorized')}</div></div><span class="tag ${tagClass}">${tagLabel}</span></div>`;
+    });
+    dtasks.innerHTML=html;
+  }
+  // Update stat cards
+  const pending=allTasks.filter(t=>t.status==='todo'||t.status==='in-progress').length;
+  const done=allTasks.filter(t=>t.status==='done').length;
+  const pEl=document.getElementById('spending');
+  const dEl=document.getElementById('sdone');
+  if(pEl) pEl.textContent=pending;
+  if(dEl) dEl.textContent=done;
+  // Update sidebar badge
+  const urgent=allTasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='canceled').length;
+  const tb=document.getElementById('tbadge');
+  if(tb){if(urgent>0){tb.textContent=urgent;tb.style.display='inline';}else{tb.style.display='none';}}
+}
+
+// Close modal on backdrop click
+document.getElementById('task-modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+// Close modal on Escape
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+
+// Load tasks on init
+loadTasks();
 </script>
 </body>
 </html>
