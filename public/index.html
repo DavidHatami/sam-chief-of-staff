@@ -385,6 +385,7 @@ function tick(){const n=new Date(),h=n.getHours(),g=h<12?'Morning':h<17?'Afterno
 setInterval(tick,1000);tick();
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 let eLoaded=false;
+let currentMailAPI='m365'; // 'm365' or 'gmail'
 async function loadE(folder,btn){
   eLoaded=true;
   document.querySelectorAll('.etb button').forEach(b=>b.classList.remove('active'));
@@ -393,7 +394,8 @@ async function loadE(folder,btn){
   list.innerHTML='<div class="eld">Loading...</div>';
   try{
     const f=folder==='sentitems'?'sentitems':'inbox';
-    const r=await fetch('/api/m365/mail?folder='+f+'&top=50');
+    const apiBase=currentMailAPI==='gmail'?'/api/gmail':'/api/m365';
+    const r=await fetch(apiBase+'/mail?folder='+f+'&top=50');
     const d=await r.json();
     if(d.error){list.innerHTML='<div class="eld">'+esc(String(d.error))+'</div>';return;}
     const msgs=d.value||[];let ur=0,html='';
@@ -426,7 +428,8 @@ async function readEmail(mid,row){
   document.querySelectorAll('.ei').forEach(r=>{r.style.background='';r.style.borderLeft='';});
   if(row){row.style.background='var(--surface-2)';row.style.borderLeft='3px solid var(--accent)';}
   try{
-    const r=await fetch('/api/m365/mail?id='+mid);
+    const apiBase=currentMailAPI==='gmail'?'/api/gmail':'/api/m365';
+    const r=await fetch(apiBase+'/mail?id='+mid);
     const d=await r.json();
     if(d.error){empty.textContent='Error: '+d.error;return;}
     document.getElementById('er-subject').textContent=d.subject||'(no subject)';
@@ -508,7 +511,8 @@ async function sendCompose(){
   btn.disabled=true;btn.textContent='Sending...';
   try{
     const toList=to.split(',').map(e=>e.trim()).filter(Boolean);
-    const r=await fetch('/api/m365/mail/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:toList,subject:subj,content:body,contentType:'Text'})});
+    const sendBase=currentMailAPI==='gmail'?'/api/gmail':'/api/m365';
+    const r=await fetch(sendBase+'/mail/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:toList,subject:subj,content:body,contentType:'Text'})});
     const d=await r.json();
     if(d.success){
       btn.textContent='Sent ✓';btn.style.background='var(--green)';
@@ -711,16 +715,14 @@ function switchAcct(acct,el){
   const list=document.getElementById('elist');
   const reader=document.getElementById('ereader-empty');
   const content=document.getElementById('ereader-content');
-  if(reader)reader.style.display='block';
+  if(reader){reader.style.display='block';reader.textContent='Click an email to read it';}
   if(content)content.style.display='none';
-  if(acct==='m365'){loadE('inbox',document.getElementById('btn-inbox'));}
+  if(acct==='m365'){currentMailAPI='m365';loadE('inbox',document.getElementById('btn-inbox'));}
+  else if(acct==='gmail'){currentMailAPI='gmail';loadE('inbox',document.getElementById('btn-inbox'));}
   else if(acct==='yahoo'){
-    list.innerHTML='<div style="padding:30px;text-align:center;"><div style="font-size:28px;margin-bottom:12px;">📬</div><div style="font-size:15px;font-weight:600;margin-bottom:8px;">Yahoo Mail</div><div style="font-size:13px;color:var(--text-dim);line-height:1.7;max-width:400px;margin:0 auto;">dh30111@yahoo.com<br><br>Yahoo doesn\'t have a REST API like Microsoft Graph. Connecting requires either a Google Workspace IMAP relay or a custom OAuth IMAP proxy.<br><br><span style="color:var(--amber);">Status: Queued for future build</span><br><br>Your M365 inbox (admin@edupolicy.ai) is fully operational in the meantime.</div></div>';
-    if(reader)reader.textContent='Select the M365 tab to read emails';
-  }
-  else if(acct==='gmail'){
-    list.innerHTML='<div style="padding:30px;text-align:center;"><div style="font-size:28px;margin-bottom:12px;">📩</div><div style="font-size:15px;font-weight:600;margin-bottom:8px;">Gmail</div><div style="font-size:13px;color:var(--text-dim);line-height:1.7;max-width:400px;margin:0 auto;">dh30111@gmail.com<br><br>Requires Google Cloud OAuth credentials (Client ID, Client Secret, Refresh Token) to connect via Gmail API.<br><br><span style="color:var(--amber);">Status: Infrastructure ready — needs OAuth setup</span><br><br>Next step: Set up a Google Cloud OAuth client and provide credentials. SAM will wire it in automatically.</div></div>';
-    if(reader)reader.textContent='Select the M365 tab to read emails';
+    currentMailAPI='yahoo';
+    list.innerHTML='<div style="padding:30px;text-align:center;"><div style="font-size:28px;margin-bottom:12px;">📬</div><div style="font-size:15px;font-weight:600;margin-bottom:8px;">Yahoo Mail</div><div style="font-size:13px;color:var(--text-dim);line-height:1.7;max-width:400px;margin:0 auto;">dh30111@yahoo.com<br><br>Yahoo doesn\'t have a REST API. Connecting requires a custom IMAP proxy.<br><br><span style="color:var(--amber);">Status: Queued for future build</span><br><br>Your M365 and Gmail inboxes are operational.</div></div>';
+    if(reader)reader.textContent='Yahoo integration pending';
   }
 }
 
