@@ -398,6 +398,7 @@
     <button class="etb-f" onclick="filterTasks('in-progress',this)">In Progress</button>
     <button class="etb-f" onclick="filterTasks('done',this)">Done</button>
     <button class="etb-f" onclick="filterTasks('urgent',this)">Urgent</button>
+    <button class="etb-f" onclick="filterTasks('review',this)">📋 Review Queue</button>
     <button class="etb-f" onclick="filterTasks('archived',this)">Archived</button>
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
@@ -428,6 +429,7 @@
           <select id="tf-status" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
             <option value="todo" selected>To Do</option>
             <option value="in-progress">In Progress</option>
+            <option value="review">📋 Review</option>
             <option value="done">Done</option>
             <option value="archived">Archived</option>
             <option value="canceled">Canceled</option>
@@ -1414,9 +1416,10 @@ function renderTasks(){
   tasks.forEach(t=>{
     const isDone=t.status==='done';
     const isIP=t.status==='in-progress';
+    const isReview=t.status==='review';
     const isCanceled=t.status==='canceled';
-    const checkClass=isDone?'done':isIP?'ip':'';
-    const checkIcon=isDone?'✓':isIP?'◐':'';
+    const checkClass=isDone?'done':isIP?'ip':isReview?'ip':'';
+    const checkIcon=isDone?'✓':isIP?'◐':isReview?'📋':'';
     const priClass=t.priority||'normal';
     const metaParts=[];
     if(t.category) metaParts.push(t.category);
@@ -1443,6 +1446,7 @@ function renderTasks(){
         <select onchange="quickStatus('${t.id}',this.value)" style="padding:4px 6px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--mono);font-size:10px;cursor:pointer;">
           <option value="todo"${t.status==='todo'?' selected':''}>To Do</option>
           <option value="in-progress"${t.status==='in-progress'?' selected':''}>In Progress</option>
+          <option value="review"${t.status==='review'?' selected':''}>📋 Review</option>
           <option value="done"${t.status==='done'?' selected':''}>Done</option>
           <option value="archived"${t.status==='archived'?' selected':''}>Archived</option>
           <option value="canceled"${t.status==='canceled'?' selected':''}>Canceled</option>
@@ -1596,7 +1600,8 @@ function updateDashboardTasks(){
     dtasks.innerHTML=html;
   }
   // Update stat cards
-  const pending=allTasks.filter(t=>t.status==='todo'||t.status==='in-progress').length;
+  const pending=allTasks.filter(t=>t.status==='todo'||t.status==='in-progress'||t.status==='review').length;
+  const reviewCount=allTasks.filter(t=>t.status==='review').length;
   const done=allTasks.filter(t=>t.status==='done').length;
   const pEl=document.getElementById('spending');
   const dEl=document.getElementById('sdone');
