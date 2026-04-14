@@ -1,0 +1,6 @@
+# Redirect /book to the main page with hash (SPA)
+/book    /index.html    200
+/book/   /index.html    200
+
+# SPA fallback for any non-API, non-file routes
+/*       /index.html    200
