@@ -83,6 +83,22 @@
 .ai-slot{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;}
 .ai-slot h4{font-size:13px;font-weight:600;margin-bottom:4px;}.ai-slot p{font-size:11px;color:var(--text-dim);}
 .ai-slot .slot-status{font-size:10px;font-family:var(--mono);margin-top:8px;padding:2px 8px;border-radius:10px;display:inline-block;}
+/* Mini Calendar */
+.mcal{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.mcal-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.mcal-hdr h4{font-size:13px;font-weight:600;}
+.mcal-hdr button{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;padding:2px 6px;}
+.mcal-hdr button:hover{color:var(--text);}
+.mcal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;}
+.mcal-dh{font-size:9px;color:var(--text-muted);text-transform:uppercase;padding:4px 0;}
+.mcal-d{font-size:11px;padding:4px 0;border-radius:4px;color:var(--text-muted);}
+.mcal-d.av{color:var(--text);}
+.mcal-d.today{background:var(--accent);color:#fff;font-weight:600;}
+.mcal-d.has-ev{color:var(--accent);font-weight:600;}
+/* Email account tabs */
+.email-accts{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+.email-acct{padding:6px 12px;border-radius:6px;font-size:11px;background:var(--surface);border:1px solid var(--border);cursor:pointer;color:var(--text-dim);transition:all 0.15s;}
+.email-acct:hover{border-color:var(--accent);color:var(--text);}.email-acct.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
 @media(max-width:768px){.sidebar{width:60px;}.sb-brand .bt,.sb-brand .bs,.ni span:not(.nic),.ns,.sb-foot span{display:none;}.sb-brand{padding:14px 12px;justify-content:center;}.ni{justify-content:center;padding:10px;}.main{margin-left:60px;}.stats,.ig{grid-template-columns:repeat(2,1fr);}.g2{grid-template-columns:1fr;}}
 </style>
 </head>
@@ -104,11 +120,17 @@
 <div class="main">
 <div id="p-dash" class="page active">
   <div class="hdr"><div><h1 id="greeting"></h1><p class="hdr-sub">Secret Agent Man has everything under control.</p></div><div class="hdr-time"><div class="t" id="clock"></div><div class="d" id="datestr"></div></div></div>
-  <div class="stats">
-    <div class="st"><div class="l">Today's Events</div><div class="v" id="sev">—</div><div class="s">Across all calendars</div></div>
-    <div class="st g"><div class="l">Tasks Complete</div><div class="v">12</div><div class="s">This week</div></div>
-    <div class="st a"><div class="l">Pending Actions</div><div class="v">5</div><div class="s">Require attention</div></div>
-    <div class="st r"><div class="l">Unread Email</div><div class="v" id="sur">—</div><div class="s">Outlook inbox</div></div>
+  <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;margin-bottom:24px;">
+    <div class="stats" style="margin-bottom:0;">
+      <div class="st"><div class="l">Today's Events</div><div class="v" id="sev">—</div><div class="s">Across all calendars</div></div>
+      <div class="st g"><div class="l">Tasks Complete</div><div class="v">12</div><div class="s">This week</div></div>
+      <div class="st a"><div class="l">Pending Actions</div><div class="v">5</div><div class="s">Require attention</div></div>
+      <div class="st r"><div class="l">Unread Email</div><div class="v" id="sur">—</div><div class="s">Outlook inbox</div></div>
+    </div>
+    <div class="mcal">
+      <div class="mcal-hdr"><button onclick="mcMo(-1)">&#8249;</button><h4 id="mc-label"></h4><button onclick="mcMo(1)">&#8250;</button></div>
+      <div class="mcal-g" id="mc-grid"></div>
+    </div>
   </div>
   <div class="g2">
     <div class="card"><div class="ch"><h3>Priority Tasks</h3><span class="badge">TODAY</span></div>
@@ -123,7 +145,12 @@
   </div>
 </div>
 <div id="p-email" class="page">
-  <div class="hdr"><div><h1>Outlook Inbox</h1><p class="hdr-sub">admin@edupolicy.ai — Microsoft 365</p></div></div>
+  <div class="hdr"><div><h1>Email</h1><p class="hdr-sub">All connected email accounts</p></div></div>
+  <div class="email-accts">
+    <div class="email-acct active" onclick="switchAcct('m365',this)">📧 admin@edupolicy.ai (M365)</div>
+    <div class="email-acct" onclick="switchAcct('yahoo',this)">📬 dh30111@yahoo.com</div>
+    <div class="email-acct" onclick="switchAcct('gmail',this)">📩 dh30111@gmail.com</div>
+  </div>
   <div class="etb">
     <button class="active" id="btn-inbox" onclick="loadE('inbox',this)">Inbox</button>
     <button id="btn-sent" onclick="loadE('sentitems',this)">Sent</button>
@@ -240,6 +267,36 @@ async function loadCal(){
   }catch(e){el.innerHTML='<div class="eld">Error loading calendar.</div>';}
 }
 loadE('inbox',document.getElementById('btn-inbox'));
+
+// ── MINI CALENDAR ──
+let mcY,mcM;(function(){const n=new Date();mcY=n.getFullYear();mcM=n.getMonth();renderMC();})();
+function mcMo(d){mcM+=d;if(mcM>11){mcM=0;mcY++;}if(mcM<0){mcM=11;mcY--;}renderMC();}
+function renderMC(){
+  const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('mc-label').textContent=MN[mcM]+' '+mcY;
+  const g=document.getElementById('mc-grid');g.innerHTML='';
+  ['S','M','T','W','T','F','S'].forEach(d=>{const e=document.createElement('div');e.className='mcal-dh';e.textContent=d;g.appendChild(e);});
+  const f=new Date(mcY,mcM,1).getDay(),dim=new Date(mcY,mcM+1,0).getDate();
+  const td=new Date();td.setHours(0,0,0,0);
+  for(let i=0;i<f;i++){const e=document.createElement('div');e.className='mcal-d';g.appendChild(e);}
+  for(let d=1;d<=dim;d++){
+    const e=document.createElement('div');e.textContent=d;
+    const dt=new Date(mcY,mcM,d);
+    const isToday=dt.getTime()===td.getTime();
+    e.className='mcal-d av'+(isToday?' today':'');
+    g.appendChild(e);
+  }
+}
+
+// ── EMAIL ACCOUNT SWITCHING ──
+function switchAcct(acct,el){
+  document.querySelectorAll('.email-acct').forEach(a=>a.classList.remove('active'));
+  el.classList.add('active');
+  const list=document.getElementById('elist');
+  if(acct==='m365'){loadE('inbox',document.getElementById('btn-inbox'));}
+  else if(acct==='yahoo'){list.innerHTML='<div class="eld">Yahoo Mail (dh30111@yahoo.com) — Integration pending. Yahoo requires IMAP OAuth proxy. SAM can read this account once a mail proxy is configured.</div>';}
+  else if(acct==='gmail'){list.innerHTML='<div class="eld">Gmail (dh30111@gmail.com) — Enable the Gmail MCP connector in your Claude settings to activate. The connection infrastructure is ready.</div>';}
+}
 
 // ── AI WORKBENCH ──
 let aiModel='claude';
