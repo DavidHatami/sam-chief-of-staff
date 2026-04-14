@@ -345,11 +345,19 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
         </div>
         <div id="er-compose" style="display:none;margin-bottom:12px;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;">
           <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
-            <label style="font-size:11px;color:var(--text-muted);width:32px;">To:</label>
+            <label style="font-size:11px;color:var(--text-muted);width:40px;">From:</label>
+            <select id="ec-from" style="flex:1;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
+              <option value="m365">admin@edupolicy.ai (M365)</option>
+              <option value="dhatami">dhatami@edupolicy.ai</option>
+              <option value="gmail">dh30111@gmail.com (Gmail)</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+            <label style="font-size:11px;color:var(--text-muted);width:40px;">To:</label>
             <input id="ec-to" type="text" style="flex:1;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
           </div>
           <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
-            <label style="font-size:11px;color:var(--text-muted);width:32px;">Subj:</label>
+            <label style="font-size:11px;color:var(--text-muted);width:40px;">Subj:</label>
             <input id="ec-subj" type="text" style="flex:1;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
           </div>
           <textarea id="ec-body" style="width:100%;padding:10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;min-height:100px;resize:vertical;margin-bottom:8px;"></textarea>
@@ -945,24 +953,37 @@ async function sendCompose(){
   const to=document.getElementById('ec-to').value.trim();
   const subj=document.getElementById('ec-subj').value.trim();
   const body=document.getElementById('ec-body').value.trim();
+  const fromAcct=document.getElementById('ec-from').value;
   if(!to){document.getElementById('ec-to').style.borderColor='var(--red)';return;}
   if(!body){document.getElementById('ec-body').style.borderColor='var(--red)';return;}
   const btn=document.getElementById('ec-send');
   btn.disabled=true;btn.textContent='Sending...';
   try{
     const toList=to.split(',').map(e=>e.trim()).filter(Boolean);
-    // Yahoo doesn't support SMTP send yet — route through M365
-    let sendBase=currentMailAPI==='gmail'?'/api/gmail':'/api/m365';
-    let viaNote='';
-    if(currentMailAPI==='yahoo'){sendBase='/api/m365';viaNote=' (via Outlook)';}
-    const r=await fetch(sendBase+'/mail/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:toList,subject:subj,content:body,contentType:'Text'})});
+    let sendBase,viaNote='',payload;
+
+    if(fromAcct==='dhatami'){
+      // Send via Resend as dhatami@edupolicy.ai
+      sendBase='/api/resend-send';
+      payload={to:toList,subject:subj,content:body,from:'dhatami@edupolicy.ai',fromName:'Dr. David Hatami'};
+      viaNote=' (via dhatami@)';
+    }else if(fromAcct==='gmail'){
+      sendBase='/api/gmail';
+      payload={to:toList,subject:subj,content:body,contentType:'Text'};
+    }else{
+      sendBase='/api/m365';
+      payload={to:toList,subject:subj,content:body,contentType:'Text'};
+    }
+
+    const endpoint=fromAcct==='dhatami'?sendBase:sendBase+'/mail/send';
+    const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const d=await r.json();
     if(d.success){
       btn.textContent='Sent ✓'+viaNote;btn.style.background='var(--green)';
       setTimeout(()=>{closeCompose();btn.textContent='Send';btn.style.background='';btn.disabled=false;},1500);
     }else{
-      btn.textContent='Error';btn.style.background='var(--red)';
-      setTimeout(()=>{btn.textContent='Send';btn.style.background='';btn.disabled=false;},2000);
+      btn.textContent='Error: '+(d.error||'').substring(0,30);btn.style.background='var(--red)';
+      setTimeout(()=>{btn.textContent='Send';btn.style.background='';btn.disabled=false;},2500);
     }
   }catch(e){
     btn.textContent='Failed';btn.disabled=false;
