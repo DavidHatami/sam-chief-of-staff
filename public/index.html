@@ -8,6 +8,7 @@
 <style>
 :root{--bg:#0a0b0d;--surface:#12141a;--surface-2:#1a1d26;--border:#2a2e3a;--accent:#4a7cff;--accent-glow:rgba(74,124,255,0.15);--text:#e8eaf0;--text-dim:#8b8fa3;--text-muted:#5c6070;--green:#34d399;--green-dim:rgba(52,211,153,0.12);--amber:#fbbf24;--amber-dim:rgba(251,191,36,0.12);--red:#f87171;--red-dim:rgba(248,113,113,0.12);--font:'DM Sans',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace;--sidebar-w:240px;}
 *{margin:0;padding:0;box-sizing:border-box;}body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;}
+::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}::-webkit-scrollbar-thumb:hover{background:var(--text-muted);}
 .sidebar{position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;}
 .sb-brand{padding:20px 20px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
 .sb-brand .icon{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0;}
@@ -153,10 +154,10 @@
   </div>
   <div class="g2">
     <div class="card"><div class="ch"><h3>Priority Tasks</h3><span class="badge" style="cursor:pointer" onclick="go('tasks',document.querySelectorAll('.ni')[3])">VIEW ALL</span></div>
-      <div id="dtasks"><div class="eld">Loading tasks...</div></div>
+      <div id="dtasks" style="max-height:340px;overflow-y:auto;"><div class="eld">Loading tasks...</div></div>
     </div>
     <div class="card"><div class="ch"><h3>Latest Emails</h3><span class="badge" style="cursor:pointer" onclick="go('email',document.querySelectorAll('.ni')[1])">VIEW ALL</span></div>
-      <div id="demails"><div class="eld">Loading Outlook...</div></div>
+      <div id="demails" style="max-height:340px;overflow-y:auto;"><div class="eld">Loading Outlook...</div></div>
     </div>
   </div>
 </div>
@@ -173,7 +174,7 @@
     <div class="sp"></div><div class="ec" id="ecount"></div>
     <button onclick="loadE('inbox',document.getElementById('btn-inbox'))">↻ Refresh</button>
   </div>
-  <div class="card" style="padding:0;overflow:hidden;"><div class="el" id="elist"><div class="eld">Loading emails...</div></div></div>
+  <div class="card" style="padding:0;overflow:hidden;"><div class="el" id="elist" style="max-height:calc(100vh - 260px);overflow-y:auto;"><div class="eld">Loading emails...</div></div></div>
 </div>
 <div id="p-calendar" class="page">
   <div class="hdr"><div><h1>Calendar</h1><p class="hdr-sub">Google Calendar + M365 Calendar</p></div></div>
@@ -302,7 +303,7 @@ async function loadE(folder,btn){
   list.innerHTML='<div class="eld">Loading...</div>';
   try{
     const f=folder==='sentitems'?'sentitems':'inbox';
-    const r=await fetch('/api/m365/mail?folder='+f);
+    const r=await fetch('/api/m365/mail?folder='+f+'&top=50');
     const d=await r.json();
     if(d.error){list.innerHTML='<div class="eld">'+esc(String(d.error))+'</div>';return;}
     const msgs=d.value||[];let ur=0,html='';
@@ -321,7 +322,7 @@ async function loadE(folder,btn){
     const b=document.getElementById('ebadge');if(ur>0){b.textContent=ur;b.style.display='inline';}else{b.style.display='none';}
     const de=document.getElementById('demails');
     const items=list.querySelectorAll('.ei');
-    let dhtml='';for(let i=0;i<Math.min(4,items.length);i++)dhtml+=items[i].outerHTML;
+    let dhtml='';for(let i=0;i<Math.min(8,items.length);i++)dhtml+=items[i].outerHTML;
     de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
   }catch(e){list.innerHTML='<div class="eld">Error loading emails.</div>';}
 }
