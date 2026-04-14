@@ -352,6 +352,29 @@ document.getElementById('booking-form').addEventListener('submit',async function
     alert('Something went wrong. Please try again or email admin@EduPolicy.ai directly.');
   }finally{btn.disabled=false;btn.textContent='Confirm Booking';}
 });
+
+// ── DEEP LINK: auto-select meeting type from URL param ──
+(function(){
+  const params=new URLSearchParams(window.location.search);
+  const t=params.get('type');
+  if(!t)return;
+  const map={
+    'discovery':{idx:0,name:'Discovery Call',dur:30},
+    'consultation':{idx:1,name:'AI Ethics Consultation',dur:60},
+    'speaking':{idx:2,name:'Speaking Engagement Inquiry',dur:30},
+    'checkin':{idx:3,name:'Quick Check-In',dur:15}
+  };
+  const m=map[t.toLowerCase()];
+  if(!m)return;
+  const els=document.querySelectorAll('.mt');
+  if(els[m.idx]){
+    els.forEach(e=>e.classList.remove('sel'));
+    els[m.idx].classList.add('sel');
+    mType=m.name;mDur=m.dur;
+    renderCal();
+    goStep(2);
+  }
+})();
 </script>
 </body>
 </html>
