@@ -14,7 +14,9 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0a0b0d;--surface:#12141a;--surface-2:#1a1d26;--border:#2a2e3a;--accent:#4a7cff;--accent-glow:rgba(74,124,255,0.15);--text:#e8eaf0;--text-dim:#8b8fa3;--text-muted:#5c6070;--green:#34d399;--green-dim:rgba(52,211,153,0.12);--amber:#fbbf24;--amber-dim:rgba(251,191,36,0.12);--red:#f87171;--red-dim:rgba(248,113,113,0.12);--font:'DM Sans',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace;--sidebar-w:240px;}
-*{margin:0;padding:0;box-sizing:border-box;}body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;}
+*{margin:0;padding:0;box-sizing:border-box;}body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;-webkit-tap-highlight-color:transparent;}
+button,a,.ni,.ei,.ti,.etb-f,.email-acct,.ai-mod{touch-action:manipulation;-webkit-touch-callout:none;}
+button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}::-webkit-scrollbar-thumb:hover{background:var(--text-muted);}
 .sidebar{position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;}
 .sb-brand{padding:20px 20px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
@@ -565,7 +567,7 @@
   </div>
   <div id="task-vdrag" style="height:6px;cursor:row-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;border-radius:3px;margin:2px 0;" onmousedown="startTaskDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:2px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
   <!-- Add/Edit Task Modal -->
-  <div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:none;align-items:center;justify-content:center;">
+  <div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;will-change:display;-webkit-transform:translateZ(0);transform:translateZ(0);">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:480px;margin:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
         <h3 id="modal-title" style="font-size:16px;font-weight:600;">New Task</h3>
@@ -842,7 +844,7 @@ async function readEmail(mid,row){
     const bodyEl=document.getElementById('er-body');
     if(body.contentType==='html'){
       const iframe=document.createElement('iframe');
-      iframe.style.cssText='width:100%;border:none;min-height:200px;border-radius:6px;background:transparent;';
+      iframe.style.cssText='width:100%;border:none;min-height:200px;border-radius:6px;background:transparent;contain:layout style;';
       iframe.sandbox='allow-same-origin';
       bodyEl.innerHTML='';bodyEl.appendChild(iframe);
       const darkCSS='html,body{background:#1a1d26!important;color:#c8cad0!important;font-family:-apple-system,BlinkMacSystemFont,sans-serif!important;font-size:14px!important;line-height:1.65!important;margin:12px!important;padding:0!important;word-wrap:break-word;overflow-wrap:break-word;}a{color:#6b9fff!important;}img{max-width:100%!important;height:auto!important;}table{max-width:100%!important;border-collapse:collapse;}td,th{padding:4px 8px;}pre,code{background:#12141a!important;color:#c8cad0!important;padding:4px 6px;border-radius:4px;font-size:13px;overflow-x:auto;max-width:100%;}blockquote{border-left:3px solid #2a2e3a;padding-left:12px;margin-left:0;color:#8b8fa3;}hr{border:none;border-top:1px solid #2a2e3a;}';
@@ -941,19 +943,23 @@ function extractTask(){
   const subj=currentEmail.subject||'(no subject)';
   const fromName=currentEmail.from?.emailAddress?.name||currentEmail.from?.emailAddress?.address||'';
   const preview=(currentEmail.bodyPreview||'').substring(0,200);
-  document.getElementById('modal-title').textContent='Extract Task from Email';
-  document.getElementById('tf-title').value='Follow up: '+subj;
-  document.getElementById('tf-desc').value='From: '+fromName+'\nSubject: '+subj+'\n\n'+preview;
-  document.getElementById('tf-priority').value='high';
-  document.getElementById('tf-status').value='todo';
-  document.getElementById('tf-cat').value='Email Follow-up';
-  document.getElementById('tf-due').value='';
-  document.getElementById('tf-notes').value='';
-  document.getElementById('tf-subtask-list').innerHTML='';
-  document.getElementById('tf-save').textContent='Create Task';
-  editingTaskId=null;
-  document.getElementById('task-modal').style.display='flex';
-  setTimeout(()=>document.getElementById('tf-title').focus(),100);
+  // Batch all DOM writes in one frame
+  requestAnimationFrame(()=>{
+    const modal=document.getElementById('task-modal');
+    document.getElementById('modal-title').textContent='Extract Task from Email';
+    document.getElementById('tf-title').value='Follow up: '+subj;
+    document.getElementById('tf-desc').value='From: '+fromName+'\nSubject: '+subj+'\n\n'+preview;
+    document.getElementById('tf-priority').value='high';
+    document.getElementById('tf-status').value='todo';
+    document.getElementById('tf-cat').value='Email Follow-up';
+    document.getElementById('tf-due').value='';
+    document.getElementById('tf-notes').value='';
+    document.getElementById('tf-subtask-list').innerHTML='';
+    document.getElementById('tf-save').textContent='Create Task';
+    editingTaskId=null;
+    modal.style.display='flex';
+    setTimeout(()=>document.getElementById('tf-title').focus(),50);
+  });
 }
 
 // ── DELETE EMAIL ──
