@@ -179,13 +179,34 @@
     <div class="card" id="ereader" style="overflow-y:auto;max-height:calc(100vh - 240px);display:flex;flex-direction:column;">
       <div class="eld" id="ereader-empty">Click an email to read it</div>
       <div id="ereader-content" style="display:none;">
-        <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+        <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">
           <div id="er-subject" style="font-size:16px;font-weight:600;margin-bottom:6px;"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
             <div id="er-from" style="font-size:13px;color:var(--accent);"></div>
             <div id="er-date" style="font-size:11px;color:var(--text-muted);font-family:var(--mono);"></div>
           </div>
           <div id="er-to" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+          <button class="ti-btn" onclick="emailAction('reply')" style="padding:5px 12px;">↩ Reply</button>
+          <button class="ti-btn" onclick="emailAction('replyall')" style="padding:5px 12px;">↩↩ Reply All</button>
+          <button class="ti-btn" onclick="emailAction('forward')" style="padding:5px 12px;">↪ Forward</button>
+          <button class="ti-btn" onclick="extractTask()" style="padding:5px 12px;background:var(--accent-glow);color:var(--accent);border-color:var(--accent);">✅ Extract Task</button>
+        </div>
+        <div id="er-compose" style="display:none;margin-bottom:12px;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;">
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+            <label style="font-size:11px;color:var(--text-muted);width:32px;">To:</label>
+            <input id="ec-to" type="text" style="flex:1;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+            <label style="font-size:11px;color:var(--text-muted);width:32px;">Subj:</label>
+            <input id="ec-subj" type="text" style="flex:1;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
+          </div>
+          <textarea id="ec-body" style="width:100%;padding:10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;min-height:100px;resize:vertical;margin-bottom:8px;"></textarea>
+          <div style="display:flex;gap:6px;justify-content:flex-end;">
+            <button class="ti-btn" onclick="closeCompose()">Cancel</button>
+            <button id="ec-send" onclick="sendCompose()" style="padding:6px 18px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;">Send</button>
+          </div>
         </div>
         <div id="er-body" style="font-size:13px;line-height:1.7;color:var(--text-dim);flex:1;overflow-y:auto;"></div>
       </div>
@@ -377,8 +398,94 @@ async function readEmail(mid,row){
       bodyEl.textContent=body.content||d.bodyPreview||'';
     }
     empty.style.display='none';content.style.display='block';
+    currentEmail=d;
+    closeCompose();
     if(row){row.classList.remove('unread');const dot=row.querySelector('.edot');if(dot)dot.className='edot r';}
   }catch(e){empty.textContent='Error loading email.';}
+}
+let currentEmail=null;
+
+function emailAction(type){
+  if(!currentEmail)return;
+  const compose=document.getElementById('er-compose');
+  const toEl=document.getElementById('ec-to');
+  const subjEl=document.getElementById('ec-subj');
+  const bodyEl=document.getElementById('ec-body');
+  const fromAddr=currentEmail.from?.emailAddress?.address||'';
+  const fromName=currentEmail.from?.emailAddress?.name||'';
+  const subj=currentEmail.subject||'';
+  const preview=currentEmail.bodyPreview||currentEmail.body?.content||'';
+  const plainBody=preview.substring(0,500);
+  const dt=new Date(currentEmail.receivedDateTime);
+  const dateStr=dt.toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+
+  if(type==='reply'){
+    toEl.value=fromAddr;
+    subjEl.value=subj.startsWith('Re:')?subj:'Re: '+subj;
+    bodyEl.value='\n\n--- Original Message ---\nFrom: '+fromName+' <'+fromAddr+'>\nDate: '+dateStr+'\nSubject: '+subj+'\n\n'+plainBody;
+  }else if(type==='replyall'){
+    const allTo=[fromAddr];
+    (currentEmail.toRecipients||[]).forEach(t=>{
+      const addr=t.emailAddress?.address||'';
+      if(addr&&addr!=='admin@edupolicy.ai'&&!allTo.includes(addr))allTo.push(addr);
+    });
+    toEl.value=allTo.join(', ');
+    subjEl.value=subj.startsWith('Re:')?subj:'Re: '+subj;
+    bodyEl.value='\n\n--- Original Message ---\nFrom: '+fromName+' <'+fromAddr+'>\nDate: '+dateStr+'\nSubject: '+subj+'\n\n'+plainBody;
+  }else if(type==='forward'){
+    toEl.value='';
+    subjEl.value=subj.startsWith('Fwd:')?subj:'Fwd: '+subj;
+    bodyEl.value='\n\n--- Forwarded Message ---\nFrom: '+fromName+' <'+fromAddr+'>\nDate: '+dateStr+'\nSubject: '+subj+'\n\n'+plainBody;
+  }
+  compose.style.display='block';
+  if(type==='forward')toEl.focus();else bodyEl.focus();
+  bodyEl.setSelectionRange(0,0);
+}
+
+function closeCompose(){document.getElementById('er-compose').style.display='none';}
+
+async function sendCompose(){
+  const to=document.getElementById('ec-to').value.trim();
+  const subj=document.getElementById('ec-subj').value.trim();
+  const body=document.getElementById('ec-body').value.trim();
+  if(!to){document.getElementById('ec-to').style.borderColor='var(--red)';return;}
+  if(!body){document.getElementById('ec-body').style.borderColor='var(--red)';return;}
+  const btn=document.getElementById('ec-send');
+  btn.disabled=true;btn.textContent='Sending...';
+  try{
+    const toList=to.split(',').map(e=>e.trim()).filter(Boolean);
+    const r=await fetch('/api/m365/mail/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:toList,subject:subj,content:body,contentType:'Text'})});
+    const d=await r.json();
+    if(d.success){
+      btn.textContent='Sent ✓';btn.style.background='var(--green)';
+      setTimeout(()=>{closeCompose();btn.textContent='Send';btn.style.background='';btn.disabled=false;},1500);
+    }else{
+      btn.textContent='Error';btn.style.background='var(--red)';
+      setTimeout(()=>{btn.textContent='Send';btn.style.background='';btn.disabled=false;},2000);
+    }
+  }catch(e){
+    btn.textContent='Failed';btn.disabled=false;
+    setTimeout(()=>{btn.textContent='Send';},2000);
+  }
+}
+
+function extractTask(){
+  if(!currentEmail)return;
+  const subj=currentEmail.subject||'(no subject)';
+  const fromName=currentEmail.from?.emailAddress?.name||currentEmail.from?.emailAddress?.address||'';
+  const preview=(currentEmail.bodyPreview||'').substring(0,200);
+  // Pre-fill the task modal with email data
+  document.getElementById('modal-title').textContent='Extract Task from Email';
+  document.getElementById('tf-title').value='Follow up: '+subj;
+  document.getElementById('tf-desc').value='From: '+fromName+'\nSubject: '+subj+'\n\n'+preview;
+  document.getElementById('tf-priority').value='high';
+  document.getElementById('tf-status').value='todo';
+  document.getElementById('tf-cat').value='Email Follow-up';
+  document.getElementById('tf-due').value='';
+  document.getElementById('tf-save').textContent='Create Task';
+  editingTaskId=null;
+  document.getElementById('task-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('tf-title').focus(),100);
 }
 let cLoaded=false;
 async function loadCal(){
