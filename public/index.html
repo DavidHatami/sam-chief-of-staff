@@ -115,6 +115,7 @@
 .ti-meta{font-size:11px;color:var(--text-muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;}
 .ti-actions{display:flex;gap:6px;opacity:0;transition:opacity 0.15s;}
 .ti:hover .ti-actions{opacity:1;}
+.ti-inline{display:flex;gap:4px;align-items:center;flex-shrink:0;}
 .ti-btn{padding:4px 10px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;font-family:var(--font);}
 .ti-btn:hover{border-color:var(--accent);color:var(--text);}.ti-btn.del:hover{border-color:var(--red);color:var(--red);}
 .ti-priority{width:4px;height:32px;border-radius:2px;flex-shrink:0;}
@@ -813,11 +814,10 @@ function renderTasks(){
   tasks.forEach(t=>{
     const isDone=t.status==='done';
     const isIP=t.status==='in-progress';
+    const isCanceled=t.status==='canceled';
     const checkClass=isDone?'done':isIP?'ip':'';
     const checkIcon=isDone?'✓':isIP?'◐':'';
     const priClass=t.priority||'normal';
-    const statusLabel={'todo':'TO DO','in-progress':'IN PROGRESS','done':'DONE','canceled':'CANCELED'}[t.status]||'TO DO';
-    const statusClass={'todo':'tu','in-progress':'tp','done':'td','canceled':''}[t.status]||'tu';
     const metaParts=[];
     if(t.category) metaParts.push(t.category);
     if(t.dueDate){
@@ -836,9 +836,22 @@ function renderTasks(){
       <div class="ti-body" onclick="editTask('${t.id}')">
         <div class="ti-title${isDone?' done':''}">${esc(t.title)}</div>
         <div class="ti-meta">
-          <span class="tag ${statusClass}">${statusLabel}</span>
           ${metaParts.map(m=>'<span>'+esc(m)+'</span>').join('')}
         </div>
+      </div>
+      <div class="ti-inline" onclick="event.stopPropagation();">
+        <select onchange="quickStatus('${t.id}',this.value)" style="padding:4px 6px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--mono);font-size:10px;cursor:pointer;">
+          <option value="todo"${t.status==='todo'?' selected':''}>To Do</option>
+          <option value="in-progress"${t.status==='in-progress'?' selected':''}>In Progress</option>
+          <option value="done"${t.status==='done'?' selected':''}>Done</option>
+          <option value="canceled"${t.status==='canceled'?' selected':''}>Canceled</option>
+        </select>
+        <select onchange="quickPriority('${t.id}',this.value)" style="padding:4px 6px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--mono);font-size:10px;cursor:pointer;">
+          <option value="urgent"${t.priority==='urgent'?' selected':''}>🔴 Urgent</option>
+          <option value="high"${t.priority==='high'?' selected':''}>🟠 High</option>
+          <option value="normal"${t.priority==='normal'?' selected':''}>🔵 Normal</option>
+          <option value="low"${t.priority==='low'?' selected':''}>⚪ Low</option>
+        </select>
       </div>
       <div class="ti-actions">
         <button class="ti-btn" onclick="event.stopPropagation();editTask('${t.id}')">Edit</button>
@@ -863,6 +876,30 @@ async function toggleTask(id){
   try{
     await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:nextStatus})});
     t.status=nextStatus;
+    t.updatedAt=new Date().toISOString();
+    renderTasks();
+    updateDashboardTasks();
+  }catch(e){}
+}
+
+async function quickStatus(id,newStatus){
+  const t=allTasks.find(x=>x.id===id);
+  if(!t)return;
+  try{
+    await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:newStatus})});
+    t.status=newStatus;
+    t.updatedAt=new Date().toISOString();
+    renderTasks();
+    updateDashboardTasks();
+  }catch(e){}
+}
+
+async function quickPriority(id,newPriority){
+  const t=allTasks.find(x=>x.id===id);
+  if(!t)return;
+  try{
+    await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({priority:newPriority})});
+    t.priority=newPriority;
     t.updatedAt=new Date().toISOString();
     renderTasks();
     updateDashboardTasks();
