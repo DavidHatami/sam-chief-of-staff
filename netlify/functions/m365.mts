@@ -56,11 +56,12 @@ export default async (req: Request, context: Context) => {
     const userEmail = Netlify.env.get("M365_USER_EMAIL") || "";
     const graphBase = `https://graph.microsoft.com/v1.0/users/${userEmail}`;
 
-    // ── READ INBOX ──
+    // ── READ MAIL ──
     if (path === "/mail" && req.method === "GET") {
       const top = url.searchParams.get("top") || "20";
+      const folder = url.searchParams.get("folder") || "inbox";
       const resp = await fetch(
-        `${graphBase}/mailFolders/inbox/messages?$top=${top}&$select=subject,from,receivedDateTime,isRead,bodyPreview&$orderby=receivedDateTime DESC`,
+        `${graphBase}/mailFolders/${folder}/messages?$top=${top}&$select=subject,from,receivedDateTime,isRead,bodyPreview&$orderby=receivedDateTime DESC`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const data = await resp.json();

@@ -4,865 +4,193 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Secret Agent Man — Chief of Staff | Dr. David Hatami</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg: #0a0b0d;
-  --surface: #12141a;
-  --surface-2: #1a1d26;
-  --surface-3: #222633;
-  --border: #2a2e3a;
-  --border-active: #4a7cff;
-  --text: #e8eaf0;
-  --text-dim: #8b8fa3;
-  --text-muted: #5c6070;
-  --accent: #4a7cff;
-  --accent-glow: rgba(74, 124, 255, 0.15);
-  --green: #34d399;
-  --green-dim: rgba(52, 211, 153, 0.12);
-  --amber: #fbbf24;
-  --amber-dim: rgba(251, 191, 36, 0.12);
-  --red: #f87171;
-  --red-dim: rgba(248, 113, 113, 0.12);
-  --radius: 10px;
-  --radius-lg: 16px;
-  --font: 'DM Sans', -apple-system, sans-serif;
-  --mono: 'JetBrains Mono', monospace;
-}
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-
-/* ── NAV ── */
-.nav {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-  background: rgba(10, 11, 13, 0.85);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border);
-  padding: 0 32px;
-  height: 60px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.nav-brand {
-  display: flex; align-items: center; gap: 12px;
-  font-weight: 700; font-size: 18px; letter-spacing: -0.3px;
-}
-.nav-brand .icon {
-  width: 34px; height: 34px; border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), #7c3aed);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; font-weight: 800; color: #fff;
-}
-.nav-links { display: flex; gap: 4px; }
-.nav-links a {
-  padding: 8px 16px; border-radius: 8px;
-  color: var(--text-dim); text-decoration: none;
-  font-size: 14px; font-weight: 500;
-  transition: all 0.2s;
-}
-.nav-links a:hover, .nav-links a.active {
-  color: var(--text); background: var(--surface-2);
-}
-.nav-status {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 13px; color: var(--green); font-family: var(--mono);
-}
-.nav-status .dot {
-  width: 8px; height: 8px; border-radius: 50%; background: var(--green);
-  animation: pulse 2s ease infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.4); }
-  50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(52,211,153,0); }
-}
-
-/* ── LAYOUT ── */
-.main { padding-top: 60px; }
-.page { display: none; padding: 32px; max-width: 1400px; margin: 0 auto; }
-.page.active { display: block; }
-
-/* ── DASHBOARD ── */
-.hero-bar {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 32px 40px;
-  margin-bottom: 28px;
-  display: flex; justify-content: space-between; align-items: center;
-}
-.hero-greeting h1 {
-  font-size: 28px; font-weight: 700; letter-spacing: -0.5px;
-  margin-bottom: 6px;
-}
-.hero-greeting p { color: var(--text-dim); font-size: 15px; }
-.hero-time {
-  text-align: right; font-family: var(--mono);
-}
-.hero-time .time { font-size: 36px; font-weight: 500; letter-spacing: -1px; }
-.hero-time .date { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
-
-.stats-row {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
-  margin-bottom: 28px;
-}
-.stat-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 22px 24px;
-}
-.stat-card .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-.stat-card .value { font-size: 32px; font-weight: 700; letter-spacing: -1px; }
-.stat-card .sub { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
-.stat-card.green .value { color: var(--green); }
-.stat-card.amber .value { color: var(--amber); }
-.stat-card.red .value { color: var(--red); }
-
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
-.grid-3 { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 24px;
-}
-.card-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
-}
-.card-header h3 { font-size: 15px; font-weight: 600; }
-.card-header .badge {
-  font-size: 11px; font-family: var(--mono); padding: 4px 10px;
-  border-radius: 20px; background: var(--accent-glow); color: var(--accent);
-}
-
-.task-item {
-  padding: 12px 0; border-bottom: 1px solid rgba(42,46,58,0.5);
-  display: flex; justify-content: space-between; align-items: center;
-}
-.task-item:last-child { border-bottom: none; }
-.task-name { font-size: 14px; font-weight: 500; }
-.task-meta { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
-.task-status {
-  font-size: 11px; font-family: var(--mono); padding: 3px 10px;
-  border-radius: 20px; white-space: nowrap;
-}
-.task-status.urgent { background: var(--red-dim); color: var(--red); }
-.task-status.pending { background: var(--amber-dim); color: var(--amber); }
-.task-status.done { background: var(--green-dim); color: var(--green); }
-
-.email-item {
-  padding: 12px 0; border-bottom: 1px solid rgba(42,46,58,0.5);
-}
-.email-item:last-child { border-bottom: none; }
-.email-from { font-size: 14px; font-weight: 500; }
-.email-subject { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
-.email-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: var(--mono); }
-
-/* ── SCHEDULE PAGE (Calendly Replacement) ── */
-.schedule-page {
-  max-width: 720px; margin: 0 auto;
-}
-.schedule-hero {
-  text-align: center; margin-bottom: 40px;
-}
-.schedule-hero .avatar {
-  width: 80px; height: 80px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), #7c3aed);
-  margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;
-  font-size: 28px; font-weight: 800; color: #fff;
-}
-.schedule-hero h2 { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
-.schedule-hero p { color: var(--text-dim); font-size: 15px; max-width: 480px; margin: 0 auto; }
-
-.meeting-types { display: grid; gap: 12px; margin-bottom: 32px; }
-.meeting-type {
-  background: var(--surface);
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px 24px;
-  cursor: pointer; transition: all 0.2s;
-  display: flex; justify-content: space-between; align-items: center;
-}
-.meeting-type:hover { border-color: var(--accent); background: var(--surface-2); }
-.meeting-type.selected { border-color: var(--accent); background: var(--accent-glow); }
-.meeting-type .mt-info h4 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-.meeting-type .mt-info p { font-size: 13px; color: var(--text-dim); }
-.meeting-type .mt-duration {
-  font-family: var(--mono); font-size: 13px; color: var(--accent);
-  background: var(--accent-glow); padding: 4px 12px; border-radius: 20px;
-}
-
-.calendar-section { margin-bottom: 32px; }
-.cal-nav {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 20px;
-}
-.cal-nav h3 { font-size: 18px; font-weight: 600; }
-.cal-nav-btns { display: flex; gap: 8px; }
-.cal-nav-btns button {
-  width: 36px; height: 36px; border-radius: 8px;
-  background: var(--surface); border: 1px solid var(--border);
-  color: var(--text); cursor: pointer; font-size: 16px;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.2s;
-}
-.cal-nav-btns button:hover { background: var(--surface-2); border-color: var(--accent); }
-
-.cal-grid {
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
-}
-.cal-day-header {
-  text-align: center; font-size: 11px; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: 1px; padding: 8px 0;
-}
-.cal-day {
-  aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-  border-radius: 8px; font-size: 14px; font-weight: 500;
-  cursor: pointer; transition: all 0.15s; color: var(--text-dim);
-}
-.cal-day.empty { cursor: default; }
-.cal-day.available { color: var(--text); background: var(--surface); border: 1px solid var(--border); }
-.cal-day.available:hover { border-color: var(--accent); background: var(--surface-2); }
-.cal-day.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
-.cal-day.past { color: var(--text-muted); cursor: default; opacity: 0.4; }
-.cal-day.today { box-shadow: inset 0 0 0 2px var(--accent); }
-
-.time-slots {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-}
-.time-slot {
-  padding: 12px; text-align: center; border-radius: 8px;
-  background: var(--surface); border: 1px solid var(--border);
-  font-family: var(--mono); font-size: 14px;
-  cursor: pointer; transition: all 0.15s;
-}
-.time-slot:hover { border-color: var(--accent); background: var(--surface-2); }
-.time-slot.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-.booking-form {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 28px;
-}
-.booking-form h3 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
-.form-group { margin-bottom: 16px; }
-.form-group label {
-  display: block; font-size: 13px; color: var(--text-dim);
-  margin-bottom: 6px; font-weight: 500;
-}
-.form-group input, .form-group textarea, .form-group select {
-  width: 100%; padding: 12px 16px; border-radius: 8px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--text); font-family: var(--font); font-size: 14px;
-  transition: border-color 0.2s;
-}
-.form-group input:focus, .form-group textarea:focus, .form-group select:focus {
-  outline: none; border-color: var(--accent);
-}
-.form-group textarea { resize: vertical; min-height: 80px; }
-
-.btn-primary {
-  width: 100%; padding: 14px; border: none; border-radius: 8px;
-  background: var(--accent); color: #fff; font-family: var(--font);
-  font-size: 15px; font-weight: 600; cursor: pointer;
-  transition: all 0.2s;
-}
-.btn-primary:hover { background: #3a6ae8; transform: translateY(-1px); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-.confirmation-box {
-  text-align: center; padding: 40px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-}
-.confirmation-box .check {
-  width: 64px; height: 64px; border-radius: 50%;
-  background: var(--green-dim); margin: 0 auto 20px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 28px; color: var(--green);
-}
-.confirmation-box h3 { font-size: 22px; margin-bottom: 8px; }
-.confirmation-box p { color: var(--text-dim); font-size: 14px; margin-bottom: 4px; }
-
-/* ── M365 STATUS ── */
-.integration-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; }
-.int-card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 24px;
-}
-.int-card .int-icon {
-  width: 44px; height: 44px; border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 20px; margin-bottom: 14px;
-}
-.int-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-.int-card p { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
-.int-card .int-status {
-  margin-top: 14px; font-size: 12px; font-family: var(--mono);
-  padding: 4px 10px; border-radius: 20px; display: inline-block;
-}
-.int-card .int-status.connected { background: var(--green-dim); color: var(--green); }
-.int-card .int-status.pending { background: var(--amber-dim); color: var(--amber); }
-
-/* ── RESPONSIVE ── */
-@media (max-width: 768px) {
-  .stats-row { grid-template-columns: repeat(2, 1fr); }
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  .time-slots { grid-template-columns: repeat(2, 1fr); }
-  .integration-cards { grid-template-columns: 1fr; }
-  .nav { padding: 0 16px; }
-  .nav-links { display: none; }
-  .hero-bar { flex-direction: column; text-align: center; gap: 16px; }
-  .hero-time { text-align: center; }
-}
+:root{--bg:#0a0b0d;--surface:#12141a;--surface-2:#1a1d26;--border:#2a2e3a;--accent:#4a7cff;--accent-glow:rgba(74,124,255,0.15);--text:#e8eaf0;--text-dim:#8b8fa3;--text-muted:#5c6070;--green:#34d399;--green-dim:rgba(52,211,153,0.12);--amber:#fbbf24;--amber-dim:rgba(251,191,36,0.12);--red:#f87171;--red-dim:rgba(248,113,113,0.12);--font:'DM Sans',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace;--sidebar-w:240px;}
+*{margin:0;padding:0;box-sizing:border-box;}body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;}
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;}
+.sb-brand{padding:20px 20px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.sb-brand .icon{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0;}
+.sb-brand .bt{font-size:14px;font-weight:700;line-height:1.2;}.sb-brand .bs{font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-top:2px;}
+.sb-nav{flex:1;padding:12px 8px;overflow-y:auto;}
+.ni{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text-dim);transition:all 0.15s;margin-bottom:2px;}
+.ni:hover{background:var(--surface-2);color:var(--text);}.ni.active{background:var(--accent-glow);color:var(--accent);}
+.ni .nic{font-size:16px;width:20px;text-align:center;flex-shrink:0;}
+.ni .nib{margin-left:auto;font-size:10px;font-family:var(--mono);background:var(--red);color:#fff;padding:2px 7px;border-radius:10px;}
+.ns{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;padding:16px 14px 6px;}
+.sb-foot{padding:14px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.sb-foot .dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s ease infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.sb-foot span{font-size:11px;color:var(--green);font-family:var(--mono);}
+.main{margin-left:var(--sidebar-w);min-height:100vh;}.page{display:none;padding:28px 32px;}.page.active{display:block;}
+.hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
+.hdr h1{font-size:22px;font-weight:700;letter-spacing:-0.3px;}.hdr-sub{color:var(--text-dim);font-size:13px;margin-top:4px;}
+.hdr-time{font-family:var(--mono);text-align:right;}.hdr-time .t{font-size:20px;font-weight:500;}.hdr-time .d{font-size:11px;color:var(--text-dim);}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+.st{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;}
+.st .l{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;}
+.st .v{font-size:26px;font-weight:700;letter-spacing:-0.5px;}.st .s{font-size:11px;color:var(--text-dim);margin-top:3px;}
+.st.g .v{color:var(--green);}.st.a .v{color:var(--amber);}.st.r .v{color:var(--red);}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;}
+.ch{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.ch h3{font-size:14px;font-weight:600;}.badge{font-size:10px;font-family:var(--mono);padding:3px 9px;border-radius:12px;background:var(--accent-glow);color:var(--accent);}
+.tr{padding:10px 0;border-bottom:1px solid rgba(42,46,58,0.4);display:flex;justify-content:space-between;align-items:center;}.tr:last-child{border-bottom:none;}
+.tn{font-size:13px;font-weight:500;}.tm{font-size:11px;color:var(--text-dim);margin-top:2px;}
+.tag{font-size:10px;font-family:var(--mono);padding:2px 9px;border-radius:12px;white-space:nowrap;}
+.tu{background:var(--red-dim);color:var(--red);}.tp{background:var(--amber-dim);color:var(--amber);}.td{background:var(--green-dim);color:var(--green);}
+.etb{display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+.etb button{padding:7px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;}
+.etb button:hover{border-color:var(--accent);color:var(--text);}.etb button.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
+.etb .sp{flex:1;}.ec{font-size:12px;color:var(--text-muted);font-family:var(--mono);}
+.el{display:flex;flex-direction:column;}
+.ei{padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;}
+.ei:hover{background:var(--surface-2);}.ei.unread{background:rgba(74,124,255,0.04);}.ei.unread .es{font-weight:600;}
+.edot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0;}.edot.u{background:var(--accent);}.edot.r{background:transparent;}
+.ef{font-size:13px;font-weight:500;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.es{font-size:13px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ep{font-size:12px;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.et{font-size:11px;color:var(--text-muted);font-family:var(--mono);white-space:nowrap;}
+.eld{text-align:center;padding:40px;color:var(--text-dim);font-size:14px;}
+.ce{padding:14px 16px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;margin-bottom:10px;}
+.ce .ct{font-size:12px;color:var(--accent);font-family:var(--mono);margin-bottom:4px;}.ce .cn{font-size:14px;font-weight:600;}.ce .cl{font-size:12px;color:var(--text-dim);margin-top:2px;}
+.cdh{font-size:15px;font-weight:600;margin:20px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border);}.cdh:first-child{margin-top:0;}
+.ig{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.ic{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;}
+.ic .ii{font-size:22px;margin-bottom:10px;}.ic h4{font-size:14px;font-weight:600;margin-bottom:5px;}.ic p{font-size:12px;color:var(--text-dim);line-height:1.5;}
+.is{margin-top:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:12px;display:inline-block;}
+@media(max-width:768px){.sidebar{width:60px;}.sb-brand .bt,.sb-brand .bs,.ni span:not(.nic),.ns,.sb-foot span{display:none;}.sb-brand{padding:14px 12px;justify-content:center;}.ni{justify-content:center;padding:10px;}.main{margin-left:60px;}.stats,.ig{grid-template-columns:repeat(2,1fr);}.g2{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
-
-<!-- NAV -->
-<nav class="nav">
-  <div class="nav-brand">
-    <div class="icon">S</div>
-    <span>Secret Agent Man</span>
+<div class="sidebar">
+  <div class="sb-brand"><div class="icon">S</div><div><div class="bt">Secret Agent Man</div><div class="bs">Chief of Staff</div></div></div>
+  <div class="sb-nav">
+    <div class="ns">Command Center</div>
+    <div class="ni active" onclick="go('dash',this)"><span class="nic">📊</span><span>Dashboard</span></div>
+    <div class="ni" onclick="go('email',this)"><span class="nic">📧</span><span>Email</span><span class="nib" id="ebadge" style="display:none"></span></div>
+    <div class="ni" onclick="go('calendar',this)"><span class="nic">📅</span><span>Calendar</span></div>
+    <div class="ns">Tools</div>
+    <div class="ni" onclick="go('schedule',this)"><span class="nic">🔗</span><span>Scheduling</span></div>
+    <div class="ni" onclick="go('integrations',this)"><span class="nic">⚡</span><span>Integrations</span></div>
   </div>
-  <div class="nav-links">
-    <a href="#" class="active" onclick="showPage('dashboard')">Dashboard</a>
-    <a href="#" onclick="showPage('schedule')">Schedule</a>
-    <a href="#" onclick="showPage('integrations')">Integrations</a>
-  </div>
-  <div class="nav-status">
-    <span class="dot"></span>
-    <span>ONLINE</span>
-  </div>
-</nav>
-
+  <div class="sb-foot"><span class="dot"></span><span>ONLINE</span></div>
+</div>
 <div class="main">
-
-<!-- ═══ DASHBOARD PAGE ═══ -->
-<div id="page-dashboard" class="page active">
-  <div class="hero-bar">
-    <div class="hero-greeting">
-      <h1>Good <span id="greeting-time"></span>, Dr. Hatami</h1>
-      <p>Secret Agent Man has everything under control. Here's your status.</p>
-    </div>
-    <div class="hero-time">
-      <div class="time" id="live-time"></div>
-      <div class="date" id="live-date"></div>
-    </div>
+<div id="p-dash" class="page active">
+  <div class="hdr"><div><h1 id="greeting"></h1><p class="hdr-sub">Secret Agent Man has everything under control.</p></div><div class="hdr-time"><div class="t" id="clock"></div><div class="d" id="datestr"></div></div></div>
+  <div class="stats">
+    <div class="st"><div class="l">Today's Events</div><div class="v" id="sev">—</div><div class="s">Across all calendars</div></div>
+    <div class="st g"><div class="l">Tasks Complete</div><div class="v">12</div><div class="s">This week</div></div>
+    <div class="st a"><div class="l">Pending Actions</div><div class="v">5</div><div class="s">Require attention</div></div>
+    <div class="st r"><div class="l">Unread Email</div><div class="v" id="sur">—</div><div class="s">Outlook inbox</div></div>
   </div>
-
-  <div class="stats-row">
-    <div class="stat-card">
-      <div class="label">Today's Events</div>
-      <div class="value" id="stat-events">—</div>
-      <div class="sub">Across all calendars</div>
+  <div class="g2">
+    <div class="card"><div class="ch"><h3>Priority Tasks</h3><span class="badge">TODAY</span></div>
+      <div class="tr"><div><div class="tn">Finalize AI Ethics course module 3</div><div class="tm">EduPolicy.ai LMS</div></div><span class="tag tu">URGENT</span></div>
+      <div class="tr"><div><div class="tn">Review admissions pipeline data</div><div class="tm">Consulting engagement</div></div><span class="tag tp">PENDING</span></div>
+      <div class="tr"><div><div class="tn">Grade submissions — English Comp</div><div class="tm">Post University</div></div><span class="tag tu">URGENT</span></div>
+      <div class="tr"><div><div class="tn">Scheduling page deployed</div><div class="tm">sam-chief-of-staff.netlify.app/book</div></div><span class="tag td">DONE</span></div>
     </div>
-    <div class="stat-card green">
-      <div class="label">Tasks Complete</div>
-      <div class="value">12</div>
-      <div class="sub">This week</div>
-    </div>
-    <div class="stat-card amber">
-      <div class="label">Pending Actions</div>
-      <div class="value">5</div>
-      <div class="sub">Require attention</div>
-    </div>
-    <div class="stat-card red">
-      <div class="label">Overdue</div>
-      <div class="value">2</div>
-      <div class="sub">Past deadline</div>
-    </div>
-  </div>
-
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-header">
-        <h3>Priority Tasks</h3>
-        <span class="badge">TODAY</span>
-      </div>
-      <div id="task-list">
-        <div class="task-item">
-          <div><div class="task-name">Loading tasks...</div><div class="task-meta">Retrieving from Secret Agent Man</div></div>
-          <span class="task-status pending">LOADING</span>
-        </div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header">
-        <h3>Upcoming Schedule</h3>
-        <span class="badge">NEXT 24H</span>
-      </div>
-      <div id="event-list">
-        <div class="email-item">
-          <div class="email-from">Loading events...</div>
-          <div class="email-subject">Connecting to Google Calendar</div>
-          <div class="email-time">—</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="grid-3">
-    <div class="card">
-      <div class="card-header">
-        <h3>Recent Activity Feed</h3>
-        <span class="badge">LIVE</span>
-      </div>
-      <div class="task-item">
-        <div><div class="task-name">SAM Dashboard deployed to Netlify</div><div class="task-meta">sam-chief-of-staff.netlify.app</div></div>
-        <span class="task-status done">COMPLETE</span>
-      </div>
-      <div class="task-item">
-        <div><div class="task-name">Scheduling page live</div><div class="task-meta">Calendly replacement active</div></div>
-        <span class="task-status done">COMPLETE</span>
-      </div>
-      <div class="task-item">
-        <div><div class="task-name">M365/Outlook integration</div><div class="task-meta">Azure App Registration required</div></div>
-        <span class="task-status pending">PENDING</span>
-      </div>
-      <div class="task-item">
-        <div><div class="task-name">Google Calendar sync</div><div class="task-meta">dh30111@gmail.com connected</div></div>
-        <span class="task-status done">ACTIVE</span>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header">
-        <h3>Quick Actions</h3>
-      </div>
-      <div style="display:grid;gap:10px;">
-        <button class="btn-primary" onclick="showPage('schedule')" style="background:var(--surface-2);border:1px solid var(--border);">Share Scheduling Link</button>
-        <button class="btn-primary" onclick="showPage('integrations')" style="background:var(--surface-2);border:1px solid var(--border);">Setup M365</button>
-        <button class="btn-primary" onclick="window.open('https://app.netlify.com/projects/sam-chief-of-staff','_blank')" style="background:var(--surface-2);border:1px solid var(--border);">Netlify Admin</button>
-      </div>
+    <div class="card"><div class="ch"><h3>Latest Emails</h3><span class="badge" style="cursor:pointer" onclick="go('email',document.querySelectorAll('.ni')[1])">VIEW ALL</span></div>
+      <div id="demails"><div class="eld">Loading Outlook...</div></div>
     </div>
   </div>
 </div>
-
-<!-- ═══ SCHEDULE PAGE (Calendly Replacement) ═══ -->
-<div id="page-schedule" class="page">
-  <div class="schedule-page">
-    <div class="schedule-hero">
-      <div class="avatar">DH</div>
-      <h2>Dr. David Hatami</h2>
-      <p>AI Ethics & Policy Consultant · Select a meeting type and time that works for you.</p>
-    </div>
-
-    <!-- Step 1: Meeting Type -->
-    <div id="step-type" class="meeting-types">
-      <div class="meeting-type" onclick="selectType(this, 'Discovery Call', 30)">
-        <div class="mt-info">
-          <h4>Discovery Call</h4>
-          <p>Introductory conversation about AI policy consulting needs</p>
-        </div>
-        <div class="mt-duration">30 min</div>
-      </div>
-      <div class="meeting-type" onclick="selectType(this, 'AI Ethics Consultation', 60)">
-        <div class="mt-info">
-          <h4>AI Ethics Consultation</h4>
-          <p>Deep-session on AI policy development, ethics programs, or institutional strategy</p>
-        </div>
-        <div class="mt-duration">60 min</div>
-      </div>
-      <div class="meeting-type" onclick="selectType(this, 'Speaking Engagement Inquiry', 30)">
-        <div class="mt-info">
-          <h4>Speaking Engagement Inquiry</h4>
-          <p>Discuss keynote, workshop, or podcast guest appearance</p>
-        </div>
-        <div class="mt-duration">30 min</div>
-      </div>
-      <div class="meeting-type" onclick="selectType(this, 'Quick Check-In', 15)">
-        <div class="mt-info">
-          <h4>Quick Check-In</h4>
-          <p>Brief follow-up or status update for existing engagements</p>
-        </div>
-        <div class="mt-duration">15 min</div>
-      </div>
-    </div>
-
-    <!-- Step 2: Date Selection -->
-    <div id="step-date" class="calendar-section" style="display:none;">
-      <div class="cal-nav">
-        <h3 id="cal-month-label"></h3>
-        <div class="cal-nav-btns">
-          <button onclick="changeMonth(-1)">&#8249;</button>
-          <button onclick="changeMonth(1)">&#8250;</button>
-        </div>
-      </div>
-      <div class="cal-grid" id="cal-grid"></div>
-    </div>
-
-    <!-- Step 3: Time Slots -->
-    <div id="step-time" style="display:none;">
-      <h3 style="font-size:16px;margin-bottom:16px;" id="time-label">Available Times</h3>
-      <div class="time-slots" id="time-slots"></div>
-    </div>
-
-    <!-- Step 4: Booking Form -->
-    <div id="step-form" style="display:none;margin-top:24px;">
-      <div class="booking-form">
-        <h3>Confirm Your Booking</h3>
-        <p style="color:var(--text-dim);font-size:14px;margin-bottom:20px;" id="booking-summary"></p>
-        <div class="form-group">
-          <label>Full Name *</label>
-          <input type="text" id="book-name" placeholder="Your name" required>
-        </div>
-        <div class="form-group">
-          <label>Email Address *</label>
-          <input type="email" id="book-email" placeholder="you@example.com" required>
-        </div>
-        <div class="form-group">
-          <label>Organization</label>
-          <input type="text" id="book-org" placeholder="Your organization (optional)">
-        </div>
-        <div class="form-group">
-          <label>Notes for Dr. Hatami</label>
-          <textarea id="book-notes" placeholder="Brief description of what you'd like to discuss..."></textarea>
-        </div>
-        <button class="btn-primary" id="btn-book" onclick="submitBooking()">Confirm Booking</button>
-      </div>
-    </div>
-
-    <!-- Step 5: Confirmation -->
-    <div id="step-confirm" style="display:none;">
-      <div class="confirmation-box">
-        <div class="check">✓</div>
-        <h3>You're Booked!</h3>
-        <p id="confirm-details"></p>
-        <p style="margin-top:12px;">A calendar invitation with a Google Meet link has been sent to your email.</p>
-        <button class="btn-primary" style="max-width:240px;margin:24px auto 0;" onclick="resetScheduler()">Book Another</button>
-      </div>
-    </div>
+<div id="p-email" class="page">
+  <div class="hdr"><div><h1>Outlook Inbox</h1><p class="hdr-sub">admin@edupolicy.ai — Microsoft 365</p></div></div>
+  <div class="etb">
+    <button class="active" id="btn-inbox" onclick="loadE('inbox',this)">Inbox</button>
+    <button id="btn-sent" onclick="loadE('sentitems',this)">Sent</button>
+    <div class="sp"></div><div class="ec" id="ecount"></div>
+    <button onclick="loadE('inbox',document.getElementById('btn-inbox'))">↻ Refresh</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;"><div class="el" id="elist"><div class="eld">Loading emails...</div></div></div>
+</div>
+<div id="p-calendar" class="page">
+  <div class="hdr"><div><h1>Calendar</h1><p class="hdr-sub">Google Calendar + M365 Calendar</p></div></div>
+  <div id="cevents"><div class="eld">Loading calendar...</div></div>
+</div>
+<div id="p-schedule" class="page">
+  <div class="hdr"><h1>Scheduling Links</h1></div>
+  <p style="color:var(--text-dim);font-size:14px;margin-bottom:24px;">Share these links with anyone who needs to book time with you.</p>
+  <div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"><div><div class="tn" style="font-size:15px;">All Meeting Types</div><div class="tm">Visitor picks from all four options</div></div><div style="display:flex;gap:8px;align-items:center;"><code style="font-size:12px;color:var(--accent);background:var(--surface-2);padding:6px 12px;border-radius:6px;">sam-chief-of-staff.netlify.app/book</code><button onclick="cp('/book',this)" style="padding:6px 12px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-size:12px;cursor:pointer;">Copy</button></div></div></div>
+  <div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"><div><div class="tn">Discovery Call</div><div class="tm">30 min — introductory conversation</div></div><div style="display:flex;gap:8px;align-items:center;"><code style="font-size:11px;color:var(--accent);background:var(--surface-2);padding:6px 10px;border-radius:6px;">/book?type=discovery</code><button onclick="cp('/book?type=discovery',this)" style="padding:6px 12px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-size:12px;cursor:pointer;">Copy</button></div></div></div>
+  <div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"><div><div class="tn">AI Ethics Consultation</div><div class="tm">60 min — deep-session on policy and strategy</div></div><div style="display:flex;gap:8px;align-items:center;"><code style="font-size:11px;color:var(--accent);background:var(--surface-2);padding:6px 10px;border-radius:6px;">/book?type=consultation</code><button onclick="cp('/book?type=consultation',this)" style="padding:6px 12px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-size:12px;cursor:pointer;">Copy</button></div></div></div>
+  <div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"><div><div class="tn">Speaking Engagement Inquiry</div><div class="tm">30 min — keynote, workshop, or podcast</div></div><div style="display:flex;gap:8px;align-items:center;"><code style="font-size:11px;color:var(--accent);background:var(--surface-2);padding:6px 10px;border-radius:6px;">/book?type=speaking</code><button onclick="cp('/book?type=speaking',this)" style="padding:6px 12px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-size:12px;cursor:pointer;">Copy</button></div></div></div>
+  <div class="card" style="margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"><div><div class="tn">Quick Check-In</div><div class="tm">15 min — brief follow-up</div></div><div style="display:flex;gap:8px;align-items:center;"><code style="font-size:11px;color:var(--accent);background:var(--surface-2);padding:6px 10px;border-radius:6px;">/book?type=checkin</code><button onclick="cp('/book?type=checkin',this)" style="padding:6px 12px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-size:12px;cursor:pointer;">Copy</button></div></div></div>
+</div>
+<div id="p-integrations" class="page">
+  <div class="hdr"><h1>Integrations</h1></div>
+  <div class="ig">
+    <div class="ic"><div class="ii">📅</div><h4>Google Calendar</h4><p>dh30111@gmail.com — Full read/write. Google Meet enabled.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
+    <div class="ic"><div class="ii">📧</div><h4>Outlook / M365</h4><p>admin@edupolicy.ai — Mail read/send + Calendar via Graph API.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
+    <div class="ic"><div class="ii">🚀</div><h4>Netlify</h4><p>sam-chief-of-staff.netlify.app — Auto-deploys from GitHub.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● DEPLOYED</div></div>
+    <div class="ic"><div class="ii">✉️</div><h4>Resend</h4><p>booking@edupolicy.ai — Auto booking confirmations.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● ACTIVE</div></div>
+    <div class="ic"><div class="ii">🐙</div><h4>GitHub</h4><p>DavidHatami/sam-chief-of-staff — Linked for auto-deploy.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● LINKED</div></div>
+    <div class="ic"><div class="ii">🤖</div><h4>Anthropic Console</h4><p>SAM managed agent — Vault creds stored.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● ACTIVE</div></div>
   </div>
 </div>
-
-<!-- ═══ INTEGRATIONS PAGE ═══ -->
-<div id="page-integrations" class="page">
-  <h2 style="font-size:24px;font-weight:700;margin-bottom:8px;">Secret Agent Man — Integrations</h2>
-  <p style="color:var(--text-dim);margin-bottom:28px;">Connected services and pending setup steps.</p>
-
-  <div class="integration-cards">
-    <div class="int-card">
-      <div class="int-icon" style="background:var(--green-dim);">📅</div>
-      <h4>Google Calendar</h4>
-      <p>Read/write access to dh30111@gmail.com. SAM can view, create, and manage all events. Google Meet auto-provisioning enabled.</p>
-      <div class="int-status connected">● CONNECTED</div>
-    </div>
-    <div class="int-card">
-      <div class="int-icon" style="background:var(--amber-dim);">📧</div>
-      <h4>Outlook / M365</h4>
-      <p>Microsoft Graph API integration for email read/send and M365 calendar. Requires Azure App Registration — see setup steps below.</p>
-      <div class="int-status pending">● SETUP REQUIRED</div>
-    </div>
-    <div class="int-card">
-      <div class="int-icon" style="background:var(--green-dim);">🚀</div>
-      <h4>Netlify</h4>
-      <p>SAM Dashboard deployed at sam-chief-of-staff.netlify.app. Serverless functions handle scheduling API and future M365 proxy.</p>
-      <div class="int-status connected">● DEPLOYED</div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:28px;">
-    <div class="card-header">
-      <h3>M365 / Outlook Setup — 5 Steps</h3>
-      <span class="badge">REQUIRED</span>
-    </div>
-    <div style="font-size:14px;line-height:1.8;color:var(--text-dim);">
-      <p style="margin-bottom:12px;color:var(--text);">SAM's M365 integration code is deployed and ready. You just need to register an Azure app and drop in three values.</p>
-      <div class="task-item">
-        <div>
-          <div class="task-name">1. Go to Azure Portal → Entra ID → App Registrations → New Registration</div>
-          <div class="task-meta"><a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" style="color:var(--accent);">Open Azure Portal →</a></div>
-        </div>
-      </div>
-      <div class="task-item">
-        <div>
-          <div class="task-name">2. Name it "SAM-ChiefOfStaff" — Single tenant — Register</div>
-          <div class="task-meta">Copy the Application (Client) ID and Directory (Tenant) ID from Overview page</div>
-        </div>
-      </div>
-      <div class="task-item">
-        <div>
-          <div class="task-name">3. API Permissions → Add: Mail.Read, Mail.Send, Mail.ReadWrite, Calendars.ReadWrite</div>
-          <div class="task-meta">Click "Grant admin consent" after adding permissions</div>
-        </div>
-      </div>
-      <div class="task-item">
-        <div>
-          <div class="task-name">4. Certificates & Secrets → New Client Secret → Copy the Value</div>
-          <div class="task-meta">Save this immediately — it only shows once</div>
-        </div>
-      </div>
-      <div class="task-item">
-        <div>
-          <div class="task-name">5. Give SAM the three values (Client ID, Tenant ID, Client Secret)</div>
-          <div class="task-meta">SAM stores them in Netlify environment variables and the Anthropic vault</div>
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
-
-</div><!-- /main -->
-
 <script>
-// ── NAVIGATION ──
-function showPage(id) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  document.querySelectorAll('.nav-links a').forEach(a => a.classList.remove('active'));
-  event.target.classList.add('active');
-  window.scrollTo(0, 0);
-}
-
-// ── CLOCK ──
-function updateClock() {
-  const now = new Date();
-  const h = now.getHours();
-  const greeting = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
-  document.getElementById('greeting-time').textContent = greeting;
-  document.getElementById('live-time').textContent = now.toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/New_York'
-  });
-  document.getElementById('live-date').textContent = now.toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York'
-  });
-}
-setInterval(updateClock, 1000);
-updateClock();
-
-// ── SCHEDULING STATE ──
-let selectedType = null;
-let selectedDuration = 0;
-let selectedDate = null;
-let selectedTime = null;
-let calYear, calMonth;
-
-const now = new Date();
-calYear = now.getFullYear();
-calMonth = now.getMonth();
-
-function selectType(el, name, duration) {
-  document.querySelectorAll('.meeting-type').forEach(m => m.classList.remove('selected'));
-  el.classList.add('selected');
-  selectedType = name;
-  selectedDuration = duration;
-  document.getElementById('step-date').style.display = 'block';
-  document.getElementById('step-time').style.display = 'none';
-  document.getElementById('step-form').style.display = 'none';
-  renderCalendar();
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-function renderCalendar() {
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  document.getElementById('cal-month-label').textContent = months[calMonth] + ' ' + calYear;
-
-  const grid = document.getElementById('cal-grid');
-  grid.innerHTML = '';
-  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  days.forEach(d => {
-    const el = document.createElement('div');
-    el.className = 'cal-day-header';
-    el.textContent = d;
-    grid.appendChild(el);
-  });
-
-  const firstDay = new Date(calYear, calMonth, 1).getDay();
-  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
-  const today = new Date();
-  today.setHours(0,0,0,0);
-
-  for (let i = 0; i < firstDay; i++) {
-    const el = document.createElement('div');
-    el.className = 'cal-day empty';
-    grid.appendChild(el);
-  }
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const el = document.createElement('div');
-    const date = new Date(calYear, calMonth, d);
-    const dayOfWeek = date.getDay();
-    const isPast = date < today;
-    const isToday = date.getTime() === today.getTime();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
-    el.textContent = d;
-    if (isPast || isWeekend) {
-      el.className = 'cal-day past';
-    } else {
-      el.className = 'cal-day available' + (isToday ? ' today' : '');
-      el.onclick = () => selectDate(calYear, calMonth, d);
-    }
-    grid.appendChild(el);
-  }
-}
-
-function changeMonth(dir) {
-  calMonth += dir;
-  if (calMonth > 11) { calMonth = 0; calYear++; }
-  if (calMonth < 0) { calMonth = 11; calYear--; }
-  renderCalendar();
-}
-
-function selectDate(y, m, d) {
-  selectedDate = new Date(y, m, d);
-  document.querySelectorAll('.cal-day').forEach(el => el.classList.remove('selected'));
-  event.target.classList.add('selected');
-  loadTimeSlots();
-}
-
-function loadTimeSlots() {
-  const container = document.getElementById('time-slots');
-  const label = document.getElementById('time-label');
-  const section = document.getElementById('step-time');
-  section.style.display = 'block';
-
-  const dateStr = selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  label.textContent = 'Available on ' + dateStr;
-
-  // Generate slots from 9 AM to 5 PM ET
-  container.innerHTML = '';
-  const slots = [];
-  for (let h = 9; h < 17; h++) {
-    for (let m = 0; m < 60; m += 30) {
-      if (h === 16 && m + selectedDuration > 60) continue;
-      const endH = h + Math.floor((m + selectedDuration) / 60);
-      const endM = (m + selectedDuration) % 60;
-      if (endH > 17 || (endH === 17 && endM > 0)) continue;
-
-      const startStr = formatTime(h, m);
-      const endStr = formatTime(endH, endM);
-      slots.push({ h, m, startStr, endStr });
-    }
-  }
-
-  // Randomly remove some slots to simulate busy calendar
-  const available = slots.filter(() => Math.random() > 0.35);
-
-  if (available.length === 0) {
-    container.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);padding:20px;">No available slots this day. Try another date.</p>';
-    return;
-  }
-
-  available.forEach(s => {
-    const el = document.createElement('div');
-    el.className = 'time-slot';
-    el.textContent = s.startStr;
-    el.onclick = () => selectTime(el, s);
-    container.appendChild(el);
-  });
-
-  section.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-function formatTime(h, m) {
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const hh = h > 12 ? h - 12 : h === 0 ? 12 : h;
-  return hh + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
-}
-
-function selectTime(el, slot) {
-  document.querySelectorAll('.time-slot').forEach(s => s.classList.remove('selected'));
-  el.classList.add('selected');
-  selectedTime = slot;
-
-  const dateStr = selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  document.getElementById('booking-summary').textContent =
-    selectedType + ' · ' + selectedDuration + ' min · ' + dateStr + ' at ' + slot.startStr + ' ET';
-
-  document.getElementById('step-form').style.display = 'block';
-  document.getElementById('step-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-async function submitBooking() {
-  const name = document.getElementById('book-name').value.trim();
-  const email = document.getElementById('book-email').value.trim();
-  const org = document.getElementById('book-org').value.trim();
-  const notes = document.getElementById('book-notes').value.trim();
-
-  if (!name || !email) { alert('Please fill in your name and email.'); return; }
-
-  const btn = document.getElementById('btn-book');
-  btn.disabled = true;
-  btn.textContent = 'Booking...';
-
-  try {
-    const y = selectedDate.getFullYear();
-    const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
-    const d = String(selectedDate.getDate()).padStart(2, '0');
-    const startH = String(selectedTime.h).padStart(2, '0');
-    const startM = String(selectedTime.m).padStart(2, '0');
-    const endH = selectedTime.h + Math.floor((selectedTime.m + selectedDuration) / 60);
-    const endM = (selectedTime.m + selectedDuration) % 60;
-
-    const payload = {
-      summary: selectedType + ' — ' + name,
-      email: email,
-      name: name,
-      org: org,
-      notes: notes,
-      type: selectedType,
-      duration: selectedDuration,
-      startDateTime: `${y}-${m}-${d}T${startH}:${startM}:00`,
-      endDateTime: `${y}-${m}-${d}T${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}:00`,
-      timeZone: 'America/New_York'
-    };
-
-    const resp = await fetch('/api/book', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();}
+function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
+function tick(){const n=new Date(),h=n.getHours(),g=h<12?'Morning':h<17?'Afternoon':'Evening';document.getElementById('greeting').textContent='Good '+g+', Dr. Hatami';document.getElementById('clock').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/New_York'});document.getElementById('datestr').textContent=n.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});}
+setInterval(tick,1000);tick();
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+let eLoaded=false;
+async function loadE(folder,btn){
+  eLoaded=true;
+  document.querySelectorAll('.etb button').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  const list=document.getElementById('elist');
+  list.innerHTML='<div class="eld">Loading...</div>';
+  try{
+    const f=folder==='sentitems'?'sentitems':'inbox';
+    const r=await fetch('/api/m365/mail?folder='+f);
+    const d=await r.json();
+    if(d.error){list.innerHTML='<div class="eld">'+esc(String(d.error))+'</div>';return;}
+    const msgs=d.value||[];let ur=0,html='';
+    msgs.forEach(m=>{
+      const u=!m.isRead;if(u)ur++;
+      const fn=m.from?.emailAddress?.name||m.from?.emailAddress?.address||'unknown';
+      const subj=m.subject||'(no subject)';
+      const prev=m.bodyPreview||'';
+      const dt=new Date(m.receivedDateTime);
+      const ts=dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+      html+=`<div class="ei${u?' unread':''}"><div class="edot ${u?'u':'r'}"></div><div style="min-width:0"><div class="ef">${esc(fn)}</div><div class="es">${esc(subj)}</div><div class="ep">${esc(prev.substring(0,120))}</div></div><div class="et">${ts}</div></div>`;
     });
-
-    if (!resp.ok) throw new Error('Booking failed');
-
-    const data = await resp.json();
-
-    document.getElementById('step-type').style.display = 'none';
-    document.getElementById('step-date').style.display = 'none';
-    document.getElementById('step-time').style.display = 'none';
-    document.getElementById('step-form').style.display = 'none';
-    document.getElementById('step-confirm').style.display = 'block';
-
-    const dateStr = selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-    document.getElementById('confirm-details').innerHTML =
-      '<strong>' + selectedType + '</strong><br>' +
-      dateStr + ' at ' + selectedTime.startStr + ' ET (' + selectedDuration + ' min)<br>' +
-      'With: Dr. David Hatami';
-
-  } catch (err) {
-    alert('Booking error: ' + err.message + '. Please try again or email admin@EduPolicy.ai directly.');
-  }
-
-  btn.disabled = false;
-  btn.textContent = 'Confirm Booking';
+    list.innerHTML=html||'<div class="eld">No emails.</div>';
+    document.getElementById('ecount').textContent=msgs.length+' messages'+(ur?' ('+ur+' unread)':'');
+    document.getElementById('sur').textContent=ur;
+    const b=document.getElementById('ebadge');if(ur>0){b.textContent=ur;b.style.display='inline';}else{b.style.display='none';}
+    const de=document.getElementById('demails');
+    const items=list.querySelectorAll('.ei');
+    let dhtml='';for(let i=0;i<Math.min(4,items.length);i++)dhtml+=items[i].outerHTML;
+    de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
+  }catch(e){list.innerHTML='<div class="eld">Error loading emails.</div>';}
 }
-
-function resetScheduler() {
-  selectedType = null; selectedDate = null; selectedTime = null;
-  document.querySelectorAll('.meeting-type').forEach(m => m.classList.remove('selected'));
-  document.getElementById('step-type').style.display = 'grid';
-  document.getElementById('step-date').style.display = 'none';
-  document.getElementById('step-time').style.display = 'none';
-  document.getElementById('step-form').style.display = 'none';
-  document.getElementById('step-confirm').style.display = 'none';
-  window.scrollTo(0, 0);
+let cLoaded=false;
+async function loadCal(){
+  cLoaded=true;const el=document.getElementById('cevents');el.innerHTML='<div class="eld">Loading...</div>';
+  try{
+    const r=await fetch('/api/m365/calendar');const d=await r.json();
+    const evs=d.value||[];
+    if(!evs.length){el.innerHTML='<div class="eld">No events this week.</div>';return;}
+    let html='',ld='';
+    evs.forEach(e=>{
+      const s=new Date(e.start?.dateTime+'Z');
+      const ds=s.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',timeZone:'America/New_York'});
+      if(ds!==ld){html+=`<div class="cdh">${ds}</div>`;ld=ds;}
+      const ts=s.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+      const en=new Date(e.end?.dateTime+'Z');
+      const te=en.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+      html+=`<div class="ce"><div class="ct">${ts} — ${te}</div><div class="cn">${esc(e.subject||'(no title)')}</div>${e.location?.displayName?'<div class="cl">'+esc(e.location.displayName)+'</div>':''}</div>`;
+    });
+    el.innerHTML=html;document.getElementById('sev').textContent=evs.length;
+  }catch(e){el.innerHTML='<div class="eld">Error loading calendar.</div>';}
 }
-
-// ── SHAREABLE LINK DETECTION ──
-if (window.location.hash === '#book' || window.location.pathname === '/book') {
-  showPage('schedule');
-}
+loadE('inbox',document.getElementById('btn-inbox'));
 </script>
 </body>
 </html>
