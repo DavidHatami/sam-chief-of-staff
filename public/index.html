@@ -633,19 +633,30 @@ async function saveEvent(){
   const endDT=date+'T'+endH+':'+endM+':00';
 
   const attendees=attendeesStr?attendeesStr.split(',').map(e=>e.trim()).filter(Boolean):[];
+  const payload={subject:title,start:startDT,end:endDT,location:loc,body:notes,attendees:attendees};
 
   const btn=document.getElementById('ev-save');
-  btn.disabled=true;btn.textContent='Creating...';
+  btn.disabled=true;btn.textContent='Creating on both calendars...';
   try{
-    const r=await fetch('/api/m365/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject:title,start:startDT,end:endDT,location:loc,body:notes,attendees:attendees})});
-    const d=await r.json();
-    if(d.success){
-      btn.textContent='Created ✓';btn.style.background='var(--green)';
-      setTimeout(()=>{closeEventModal();btn.textContent='Create Event';btn.style.background='';btn.disabled=false;loadCal();fetchMCEvents();},1200);
+    // Fire both M365 and Google Calendar simultaneously
+    const [m365Resp,gcalResp]=await Promise.allSettled([
+      fetch('/api/m365/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
+      fetch('/api/gcal/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+    ]);
+    const m365Ok=m365Resp.status==='fulfilled'&&(await m365Resp.value.json()).success;
+    let gcalOk=false;
+    try{gcalOk=gcalResp.status==='fulfilled'&&(await gcalResp.value.json()).success;}catch(e){}
+
+    if(m365Ok&&gcalOk){
+      btn.textContent='Created on both ✓';btn.style.background='var(--green)';
+    }else if(m365Ok){
+      btn.textContent='M365 ✓ (Google Calendar pending setup)';btn.style.background='var(--green)';
+    }else if(gcalOk){
+      btn.textContent='Google ✓ (M365 error)';btn.style.background='var(--amber)';
     }else{
       btn.textContent='Error';btn.style.background='var(--red)';
-      setTimeout(()=>{btn.textContent='Create Event';btn.style.background='';btn.disabled=false;},2000);
     }
+    setTimeout(()=>{closeEventModal();btn.textContent='Create Event';btn.style.background='';btn.disabled=false;loadCal();fetchMCEvents();},1800);
   }catch(e){btn.textContent='Failed';btn.disabled=false;setTimeout(()=>{btn.textContent='Create Event';},2000);}
 }
 
