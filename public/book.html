@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book a Meeting — Dr. David Hatami | AI Ethics & Policy</title>
+<meta name="description" content="Schedule a meeting with Dr. David Hatami — AI Ethics consultant, higher education leader, and policy specialist.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0b0d;
+  --surface: #12141a;
+  --surface-2: #1a1d26;
+  --border: #2a2e3a;
+  --text: #e8eaf0;
+  --text-dim: #8b8fa3;
+  --text-muted: #5c6070;
+  --accent: #4a7cff;
+  --accent-glow: rgba(74,124,255,0.15);
+  --green: #34d399;
+  --green-dim: rgba(52,211,153,0.12);
+  --font: 'DM Sans', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;}
+
+.wrap{max-width:640px;margin:0 auto;padding:32px 20px 60px;}
+
+/* Brand bar */
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+.brand-icon{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;}
+.brand span{font-size:13px;color:var(--text-muted);font-family:var(--mono);}
+
+/* Hero */
+.hero{text-align:center;margin-bottom:36px;}
+.avatar{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#7c3aed);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;}
+.hero h1{font-size:22px;font-weight:700;letter-spacing:-0.3px;margin-bottom:6px;}
+.hero p{color:var(--text-dim);font-size:14px;max-width:420px;margin:0 auto;line-height:1.5;}
+
+/* Steps */
+.step{display:none;}
+.step.active{display:block;}
+.step-label{font-size:11px;color:var(--accent);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px;}
+
+/* Meeting types */
+.mt{background:var(--surface);border:2px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:10px;cursor:pointer;transition:all 0.15s;display:flex;justify-content:space-between;align-items:center;}
+.mt:hover{border-color:var(--accent);background:var(--surface-2);}
+.mt.sel{border-color:var(--accent);background:var(--accent-glow);}
+.mt h3{font-size:15px;font-weight:600;margin-bottom:3px;}
+.mt p{font-size:12px;color:var(--text-dim);margin:0;}
+.mt-dur{font-family:var(--mono);font-size:12px;color:var(--accent);background:var(--accent-glow);padding:4px 12px;border-radius:20px;white-space:nowrap;}
+
+/* Calendar */
+.cal-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.cal-nav h3{font-size:17px;font-weight:600;}
+.cal-btns{display:flex;gap:6px;}
+.cal-btns button{width:34px;height:34px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
+.cal-btns button:hover{border-color:var(--accent);background:var(--surface-2);}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+.cal-dh{text-align:center;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;padding:6px 0;}
+.cal-d{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:13px;font-weight:500;color:var(--text-muted);cursor:default;}
+.cal-d.av{color:var(--text);background:var(--surface);border:1px solid var(--border);cursor:pointer;transition:all 0.12s;}
+.cal-d.av:hover{border-color:var(--accent);background:var(--surface-2);}
+.cal-d.sel{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important;}
+.cal-d.today{box-shadow:inset 0 0 0 2px var(--accent);}
+.cal-d.past{opacity:0.35;}
+
+/* Time slots */
+.time-head{font-size:15px;font-weight:600;margin-bottom:12px;}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:20px;}
+.slot{padding:11px;text-align:center;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-family:var(--mono);font-size:13px;cursor:pointer;transition:all 0.12s;}
+.slot:hover{border-color:var(--accent);background:var(--surface-2);}
+.slot.sel{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+/* Form */
+.form-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px;}
+.form-card h3{font-size:17px;font-weight:600;margin-bottom:4px;}
+.form-summary{font-size:13px;color:var(--text-dim);margin-bottom:18px;line-height:1.5;}
+.fg{margin-bottom:14px;}
+.fg label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:5px;font-weight:500;}
+.fg input,.fg textarea,.fg select{width:100%;padding:11px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;transition:border-color 0.15s;}
+.fg input:focus,.fg textarea:focus,.fg select:focus{outline:none;border-color:var(--accent);}
+.fg textarea{resize:vertical;min-height:70px;}
+.btn{width:100%;padding:13px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;transition:all 0.15s;}
+.btn:hover{background:#3a6ae8;transform:translateY(-1px);}
+.btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+.btn-back{background:transparent;border:1px solid var(--border);color:var(--text-dim);margin-top:10px;font-size:13px;}
+.btn-back:hover{background:var(--surface-2);border-color:var(--accent);color:var(--text);transform:none;}
+
+/* Confirmation */
+.confirm{text-align:center;padding:40px 20px;}
+.confirm .check{width:60px;height:60px;border-radius:50%;background:var(--green-dim);margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--green);}
+.confirm h2{font-size:20px;margin-bottom:8px;}
+.confirm p{color:var(--text-dim);font-size:13px;line-height:1.6;}
+.confirm .detail{color:var(--text);font-weight:500;font-size:14px;margin:12px 0;}
+
+/* Responsive */
+@media(max-width:480px){
+  .slots{grid-template-columns:repeat(2,1fr);}
+  .wrap{padding:20px 16px 40px;}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="brand">
+    <div class="brand-icon">S</div>
+    <span>SAM — Chief of Staff</span>
+  </div>
+
+  <div class="hero">
+    <div class="avatar">DH</div>
+    <h1>Dr. David Hatami, Ed.D.</h1>
+    <p>AI Ethics & Policy Consultant · Higher Education Leadership<br>Select a meeting type, pick a date and time, and you're booked.</p>
+  </div>
+
+  <!-- STEP 1: Meeting Type -->
+  <div id="s1" class="step active">
+    <div class="step-label">Step 1 — Choose meeting type</div>
+    <div class="mt" onclick="pickType(this,'Discovery Call','Introductory conversation about AI policy consulting needs',30)">
+      <div><h3>Discovery Call</h3><p>Introductory conversation about AI policy consulting needs</p></div>
+      <div class="mt-dur">30 min</div>
+    </div>
+    <div class="mt" onclick="pickType(this,'AI Ethics Consultation','Deep-session on AI policy development, ethics programs, or institutional strategy',60)">
+      <div><h3>AI Ethics Consultation</h3><p>Deep-session on AI policy, ethics programs, or institutional strategy</p></div>
+      <div class="mt-dur">60 min</div>
+    </div>
+    <div class="mt" onclick="pickType(this,'Speaking Engagement Inquiry','Keynote, workshop, or podcast guest appearance discussion',30)">
+      <div><h3>Speaking Engagement Inquiry</h3><p>Keynote, workshop, or podcast guest appearance</p></div>
+      <div class="mt-dur">30 min</div>
+    </div>
+    <div class="mt" onclick="pickType(this,'Quick Check-In','Brief follow-up or status update for existing engagements',15)">
+      <div><h3>Quick Check-In</h3><p>Brief follow-up for existing engagements</p></div>
+      <div class="mt-dur">15 min</div>
+    </div>
+  </div>
+
+  <!-- STEP 2: Date -->
+  <div id="s2" class="step">
+    <div class="step-label">Step 2 — Pick a date</div>
+    <div class="cal-nav">
+      <h3 id="cal-label"></h3>
+      <div class="cal-btns"><button onclick="chMo(-1)">&#8249;</button><button onclick="chMo(1)">&#8250;</button></div>
+    </div>
+    <div class="cal-grid" id="cal"></div>
+    <button class="btn btn-back" onclick="goStep(1)">← Back to meeting types</button>
+  </div>
+
+  <!-- STEP 3: Time -->
+  <div id="s3" class="step">
+    <div class="step-label">Step 3 — Select a time</div>
+    <div class="time-head" id="time-label"></div>
+    <div class="slots" id="slots"></div>
+    <button class="btn btn-back" onclick="goStep(2)">← Back to calendar</button>
+  </div>
+
+  <!-- STEP 4: Form -->
+  <div id="s4" class="step">
+    <div class="step-label">Step 4 — Your details</div>
+    <div class="form-card">
+      <h3>Confirm Your Booking</h3>
+      <div class="form-summary" id="form-summary"></div>
+      <form name="booking" method="POST" data-netlify="true" action="/success" id="booking-form">
+        <input type="hidden" name="form-name" value="booking">
+        <input type="hidden" name="meeting-type" id="f-type">
+        <input type="hidden" name="meeting-duration" id="f-duration">
+        <input type="hidden" name="meeting-date" id="f-date">
+        <input type="hidden" name="meeting-time" id="f-time">
+        <input type="hidden" name="meeting-datetime-start" id="f-start">
+        <input type="hidden" name="meeting-datetime-end" id="f-end">
+        <div class="fg">
+          <label>Full Name *</label>
+          <input type="text" name="name" required placeholder="Your name">
+        </div>
+        <div class="fg">
+          <label>Email Address *</label>
+          <input type="email" name="email" required placeholder="you@example.com">
+        </div>
+        <div class="fg">
+          <label>Phone (optional)</label>
+          <input type="tel" name="phone" placeholder="+1 (555) 123-4567">
+        </div>
+        <div class="fg">
+          <label>Organization</label>
+          <input type="text" name="organization" placeholder="Your institution or company">
+        </div>
+        <div class="fg">
+          <label>What would you like to discuss?</label>
+          <textarea name="notes" placeholder="Brief description so Dr. Hatami can prepare..."></textarea>
+        </div>
+        <div class="fg">
+          <label>Preferred Video Platform</label>
+          <select name="platform">
+            <option value="Google Meet">Google Meet (default)</option>
+            <option value="Zoom">Zoom</option>
+            <option value="Microsoft Teams">Microsoft Teams</option>
+            <option value="Phone Call">Phone Call</option>
+          </select>
+        </div>
+        <button type="submit" class="btn" id="btn-book">Confirm Booking</button>
+      </form>
+      <button class="btn btn-back" onclick="goStep(3)">← Back to time selection</button>
+    </div>
+  </div>
+
+  <!-- STEP 5: Confirmation -->
+  <div id="s5" class="step">
+    <div class="confirm">
+      <div class="check">✓</div>
+      <h2>You're Booked!</h2>
+      <div class="detail" id="confirm-detail"></div>
+      <p>Dr. Hatami will send a calendar invitation with the meeting link to your email within 24 hours. If you need to reschedule, email <a href="mailto:admin@EduPolicy.ai" style="color:var(--accent);">admin@EduPolicy.ai</a>.</p>
+      <button class="btn" style="max-width:220px;margin:24px auto 0;" onclick="location.reload()">Book Another Meeting</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let mType='',mDur=0,mDate=null,mTime=null,cY,cM;
+const now=new Date();cY=now.getFullYear();cM=now.getMonth();
+const MO=['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function goStep(n){
+  for(let i=1;i<=5;i++)document.getElementById('s'+i).classList.remove('active');
+  document.getElementById('s'+n).classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function pickType(el,name,desc,dur){
+  document.querySelectorAll('.mt').forEach(m=>m.classList.remove('sel'));
+  el.classList.add('sel');
+  mType=name;mDur=dur;
+  renderCal();
+  goStep(2);
+}
+
+function renderCal(){
+  document.getElementById('cal-label').textContent=MO[cM]+' '+cY;
+  const g=document.getElementById('cal');g.innerHTML='';
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d=>{
+    const e=document.createElement('div');e.className='cal-dh';e.textContent=d;g.appendChild(e);
+  });
+  const f=new Date(cY,cM,1).getDay();
+  const dim=new Date(cY,cM+1,0).getDate();
+  const td=new Date();td.setHours(0,0,0,0);
+  for(let i=0;i<f;i++){const e=document.createElement('div');e.className='cal-d';g.appendChild(e);}
+  for(let d=1;d<=dim;d++){
+    const e=document.createElement('div');
+    const dt=new Date(cY,cM,d);
+    const dow=dt.getDay();
+    const past=dt<td;
+    const today=dt.getTime()===td.getTime();
+    const wknd=dow===0||dow===6;
+    e.textContent=d;
+    if(past||wknd){e.className='cal-d'+(past?' past':'');}
+    else{
+      e.className='cal-d av'+(today?' today':'');
+      e.onclick=function(){pickDate(cY,cM,d,e);};
+    }
+    g.appendChild(e);
+  }
+}
+
+function chMo(dir){cM+=dir;if(cM>11){cM=0;cY++;}if(cM<0){cM=11;cY--;}renderCal();}
+
+function pickDate(y,m,d,el){
+  mDate=new Date(y,m,d);
+  document.querySelectorAll('.cal-d').forEach(e=>e.classList.remove('sel'));
+  el.classList.add('sel');
+  loadSlots();
+  goStep(3);
+}
+
+function loadSlots(){
+  const c=document.getElementById('slots');c.innerHTML='';
+  const ds=mDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  document.getElementById('time-label').textContent='Available on '+ds;
+  const slots=[];
+  for(let h=9;h<17;h++){
+    for(let m=0;m<60;m+=30){
+      const eH=h+Math.floor((m+mDur)/60);
+      const eM=(m+mDur)%60;
+      if(eH>17||(eH===17&&eM>0))continue;
+      slots.push({h,m,eH,eM,label:fmtT(h,m)});
+    }
+  }
+  if(slots.length===0){c.innerHTML='<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);padding:20px;">No slots available for this duration. Try a shorter meeting type.</p>';return;}
+  slots.forEach(s=>{
+    const e=document.createElement('div');e.className='slot';e.textContent=s.label;
+    e.onclick=function(){pickTime(e,s);};
+    c.appendChild(e);
+  });
+}
+
+function fmtT(h,m){const a=h>=12?'PM':'AM';const hh=h>12?h-12:h===0?12:h;return hh+':'+(m<10?'0':'')+m+' '+a;}
+
+function pickTime(el,s){
+  document.querySelectorAll('.slot').forEach(e=>e.classList.remove('sel'));
+  el.classList.add('sel');
+  mTime=s;
+  const ds=mDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const endLabel=fmtT(s.eH,s.eM);
+  document.getElementById('form-summary').innerHTML=
+    '<strong>'+mType+'</strong> &middot; '+mDur+' minutes<br>'+
+    ds+' &middot; '+s.label+' – '+endLabel+' ET';
+  const y=mDate.getFullYear(),mo=String(mDate.getMonth()+1).padStart(2,'0'),d=String(mDate.getDate()).padStart(2,'0');
+  const sH=String(s.h).padStart(2,'0'),sM=String(s.m).padStart(2,'0');
+  const eHs=String(s.eH).padStart(2,'0'),eMs=String(s.eM).padStart(2,'0');
+  document.getElementById('f-type').value=mType;
+  document.getElementById('f-duration').value=mDur+' minutes';
+  document.getElementById('f-date').value=ds;
+  document.getElementById('f-time').value=s.label+' – '+endLabel+' ET';
+  document.getElementById('f-start').value=y+'-'+mo+'-'+d+'T'+sH+':'+sM+':00';
+  document.getElementById('f-end').value=y+'-'+mo+'-'+d+'T'+eHs+':'+eMs+':00';
+  goStep(4);
+}
+
+// Handle form submission via Netlify Forms with AJAX
+document.getElementById('booking-form').addEventListener('submit',function(ev){
+  ev.preventDefault();
+  const btn=document.getElementById('btn-book');
+  btn.disabled=true;btn.textContent='Submitting...';
+  const fd=new FormData(this);
+  fetch('/',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fd).toString()})
+  .then(resp=>{
+    if(!resp.ok)throw new Error('Submit failed');
+    const ds=mDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    const endLabel=fmtT(mTime.eH,mTime.eM);
+    document.getElementById('confirm-detail').innerHTML=
+      mType+'<br>'+ds+' at '+mTime.label+' – '+endLabel+' ET<br>with Dr. David Hatami';
+    goStep(5);
+  })
+  .catch(err=>{
+    alert('Something went wrong. Please try again or email admin@EduPolicy.ai directly.');
+  })
+  .finally(()=>{btn.disabled=false;btn.textContent='Confirm Booking';});
+});
+</script>
+</body>
+</html>

@@ -1,6 +1,10 @@
-# Redirect /book to the main page with hash (SPA)
-/book    /index.html    200
-/book/   /index.html    200
+# Scheduling page (Calendly replacement)
+/book     /book.html     200
+/book/    /book.html     200
+/schedule /book.html     301
 
-# SPA fallback for any non-API, non-file routes
-/*       /index.html    200
+# Success page
+/success  /success.html  200
+
+# Dashboard SPA fallback
+/*        /index.html    200
