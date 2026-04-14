@@ -137,6 +137,7 @@
     <div class="ni" onclick="go('email',this)"><span class="nic">📧</span><span>Email</span><span class="nib" id="ebadge" style="display:none"></span></div>
     <div class="ni" onclick="go('calendar',this)"><span class="nic">📅</span><span>Calendar</span></div>
     <div class="ni" onclick="go('tasks',this)"><span class="nic">✅</span><span>Tasks</span><span class="nib" id="tbadge" style="display:none"></span></div>
+    <div class="ni" onclick="go('zoom',this)"><span class="nic">🎥</span><span>Zoom</span><span class="nib" id="zbadge" style="display:none"></span></div>
     <div class="ns">Tools</div>
     <div class="ni" onclick="go('ai',this)"><span class="nic">🧠</span><span>AI Workbench</span></div>
     <div class="ni" onclick="go('schedule',this)"><span class="nic">🔗</span><span>Scheduling</span></div>
@@ -149,11 +150,12 @@
 <div id="p-dash" class="page active">
   <div class="hdr"><div><h1 id="greeting"></h1><p class="hdr-sub">Secret Agent Man has everything under control.</p></div><div class="hdr-time"><div class="t" id="clock"></div><div class="d" id="datestr"></div></div></div>
   <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;margin-bottom:24px;">
-    <div class="stats" style="margin-bottom:0;">
+    <div class="stats" style="margin-bottom:0;grid-template-columns:repeat(5,1fr);">
       <div class="st" style="cursor:pointer;" onclick="go('calendar',document.querySelectorAll('.ni')[2])"><div class="l">Today's Events</div><div class="v" id="sev">—</div><div class="s">Across all calendars</div></div>
       <div class="st g" style="cursor:pointer;" onclick="go('tasks',document.querySelectorAll('.ni')[3])"><div class="l">Tasks Complete</div><div class="v" id="sdone">—</div><div class="s">This week</div></div>
       <div class="st a" style="cursor:pointer;" onclick="go('tasks',document.querySelectorAll('.ni')[3])"><div class="l">Pending Actions</div><div class="v" id="spending">—</div><div class="s">Click to view →</div></div>
       <div class="st r" style="cursor:pointer;" onclick="go('email',document.querySelectorAll('.ni')[1])"><div class="l">Unread Email</div><div class="v" id="sur">—</div><div class="s">Click to view →</div></div>
+      <div class="st" style="cursor:pointer;" onclick="go('zoom',document.querySelectorAll('.ni')[4])"><div class="l">Upcoming Zoom</div><div class="v" id="szoom">—</div><div class="s">Click to view →</div></div>
     </div>
     <div class="mcal">
       <div class="mcal-hdr"><button onclick="mcMo(-1)">&#8249;</button><h4 id="mc-label"></h4><button onclick="mcMo(1)">&#8250;</button></div>
@@ -282,6 +284,73 @@
     </div>
   </div>
 </div>
+<div id="p-zoom" class="page">
+  <div class="hdr"><div><h1>Zoom</h1><p class="hdr-sub">Meetings, recordings, and transcript processing</p></div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="openZoomMeeting()" style="padding:8px 18px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">🎥 Create Meeting</button>
+      <button onclick="loadZoom()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">↻ Refresh</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:18px;">
+    <button class="etb-f active" onclick="zoomTab('meetings',this)">Upcoming Meetings</button>
+    <button class="etb-f" onclick="zoomTab('recordings',this)">Recordings</button>
+    <button class="etb-f" onclick="zoomTab('transcripts',this)">Processed Transcripts</button>
+  </div>
+  <div id="zoom-meetings" class="card" style="padding:0;overflow:hidden;">
+    <div id="zlist" style="max-height:calc(100vh - 280px);overflow-y:auto;"><div class="eld">Loading Zoom meetings...</div></div>
+  </div>
+  <div id="zoom-recordings" class="card" style="padding:0;overflow:hidden;display:none;">
+    <div id="zreclist" style="max-height:calc(100vh - 280px);overflow-y:auto;"><div class="eld">Loading recordings...</div></div>
+  </div>
+  <div id="zoom-transcripts" class="card" style="padding:0;overflow:hidden;display:none;">
+    <div id="ztranscripts" style="max-height:calc(100vh - 280px);overflow-y:auto;"><div class="eld">No processed transcripts yet. Click "Process Transcript" on any recording.</div></div>
+  </div>
+  <!-- Create Zoom Meeting Modal -->
+  <div id="zoom-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:500px;margin:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h3 style="font-size:16px;font-weight:600;">New Zoom Meeting</h3>
+        <button onclick="closeZoomModal()" style="background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;">✕</button>
+      </div>
+      <input id="zm-topic" type="text" placeholder="Meeting topic..." style="width:100%;padding:10px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:14px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Date</label>
+          <input id="zm-date" type="date" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Start Time</label>
+          <select id="zm-time" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;"></select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Duration</label>
+          <select id="zm-dur" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+            <option value="15">15 minutes</option>
+            <option value="30" selected>30 minutes</option>
+            <option value="45">45 minutes</option>
+            <option value="60">1 hour</option>
+            <option value="90">1.5 hours</option>
+            <option value="120">2 hours</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Password (optional)</label>
+          <input id="zm-pass" type="text" placeholder="Auto-generated if blank" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+        </div>
+      </div>
+      <input id="zm-attendees" type="text" placeholder="Invite attendees (comma-separated emails, optional)" style="width:100%;padding:10px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;margin-bottom:12px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);margin-bottom:16px;cursor:pointer;">
+        <input type="checkbox" id="zm-cal-sync" checked style="accent-color:var(--accent);"> Also create calendar event (M365 + Google)
+      </label>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="closeZoomModal()" style="padding:8px 18px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:13px;cursor:pointer;">Cancel</button>
+        <button id="zm-save" onclick="createZoomMeeting()" style="padding:8px 22px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">Create Meeting</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="p-ai" class="page">
   <div class="hdr"><div><h1>AI Workbench</h1><p class="hdr-sub">Research and query across AI platforms — Claude, OpenAI, and more</p></div></div>
   <div class="ai-models">
@@ -393,6 +462,7 @@
     <div class="ic"><div class="ii">🐙</div><h4>GitHub</h4><p>DavidHatami/sam-chief-of-staff — Linked for auto-deploy.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● LINKED</div></div>
     <div class="ic"><div class="ii">🤖</div><h4>Anthropic Console</h4><p>SAM managed agent — Vault creds stored.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● ACTIVE</div></div>
     <div class="ic"><div class="ii">📬</div><h4>Yahoo Mail</h4><p>dh30111@yahoo.com — Read inbox, delete via IMAP. Send routes through M365.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
+    <div class="ic"><div class="ii">🎥</div><h4>Zoom</h4><p>Server-to-Server OAuth — Meetings, recordings, transcripts, auto cloud recording.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
   </div>
   <div style="margin-top:24px;">
     <div class="hdr"><h1>Data Storage</h1></div>
@@ -412,7 +482,7 @@
 </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 function tick(){const n=new Date(),h=n.getHours(),g=h<12?'Morning':h<17?'Afternoon':'Evening';document.getElementById('greeting').textContent='Good '+g+', Dr. Hatami';document.getElementById('clock').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/New_York'});document.getElementById('datestr').textContent=n.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});}
 setInterval(tick,1000);tick();
@@ -934,6 +1004,18 @@ function openCalTask(){
 
 loadE('inbox',document.getElementById('btn-inbox'));
 
+// ── DASHBOARD ZOOM COUNT ──
+(async function(){
+  try{
+    const r=await fetch('/api/zoom/meetings');
+    const d=await r.json();
+    const meetings=d.meetings||[];
+    const upcoming=meetings.filter(m=>{const dt=new Date(m.start_time||0);return dt>new Date();}).length;
+    const el=document.getElementById('szoom');
+    if(el)el.textContent=upcoming;
+  }catch(e){const el=document.getElementById('szoom');if(el)el.textContent='0';}
+})();
+
 // ── MINI CALENDAR ──
 let mcY,mcM,mcEventDays=new Set();
 (function(){const n=new Date();mcY=n.getFullYear();mcM=n.getMonth();renderMC();fetchMCEvents();})();
@@ -1035,6 +1117,267 @@ async function sendAI(){
   }
   btn.disabled=false;btn.textContent='Send';
   msgs.scrollTop=msgs.scrollHeight;
+}
+
+// ── ZOOM SYSTEM ──
+let zoomLoaded=false;
+let currentZoomTab='meetings';
+let processedTranscripts=[];
+
+function zoomTab(tab,el){
+  currentZoomTab=tab;
+  document.querySelectorAll('#p-zoom .etb-f').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('zoom-meetings').style.display=tab==='meetings'?'block':'none';
+  document.getElementById('zoom-recordings').style.display=tab==='recordings'?'block':'none';
+  document.getElementById('zoom-transcripts').style.display=tab==='transcripts'?'block':'none';
+  if(tab==='recordings'&&!document.getElementById('zreclist').dataset.loaded)loadZoomRecordings();
+}
+
+async function loadZoom(){
+  zoomLoaded=true;
+  loadZoomMeetings();
+  if(currentZoomTab==='recordings')loadZoomRecordings();
+}
+
+async function loadZoomMeetings(){
+  const el=document.getElementById('zlist');
+  el.innerHTML='<div class="eld">Loading meetings...</div>';
+  try{
+    const r=await fetch('/api/zoom/meetings');
+    const d=await r.json();
+    if(d.error){el.innerHTML='<div class="eld">'+esc(d.error)+'</div>';return;}
+    const meetings=d.meetings||[];
+    if(!meetings.length){el.innerHTML='<div class="eld">No upcoming meetings.</div>';return;}
+    let html='';
+    meetings.forEach(m=>{
+      const dt=m.start_time?new Date(m.start_time):null;
+      const dateStr=dt?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'}):'TBD';
+      const timeStr=dt?dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
+      const durMin=m.duration||0;
+      html+=`<div class="ti" style="cursor:default;">
+        <div class="ti-priority normal"></div>
+        <div style="font-size:18px;width:28px;text-align:center;flex-shrink:0;">🎥</div>
+        <div class="ti-body">
+          <div class="ti-title">${esc(m.topic||'Zoom Meeting')}</div>
+          <div class="ti-meta"><span>${dateStr} ${timeStr}</span><span>${durMin} min</span><span>ID: ${m.id}</span></div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          ${m.join_url?`<a href="${esc(m.join_url)}" target="_blank" style="padding:4px 10px;border-radius:5px;background:var(--accent-glow);border:1px solid var(--accent);color:var(--accent);font-size:11px;text-decoration:none;font-family:var(--font);">Join</a>`:''}
+        </div>
+      </div>`;
+    });
+    el.innerHTML=html;
+    // Update sidebar badge
+    const upcoming=meetings.filter(m=>{const dt=new Date(m.start_time||0);return dt>new Date();}).length;
+    const zb=document.getElementById('zbadge');
+    if(zb){if(upcoming>0){zb.textContent=upcoming;zb.style.display='inline';}else{zb.style.display='none';}}
+  }catch(e){el.innerHTML='<div class="eld">Error loading Zoom meetings.</div>';}
+}
+
+async function loadZoomRecordings(){
+  const el=document.getElementById('zreclist');
+  el.innerHTML='<div class="eld">Loading recordings...</div>';
+  el.dataset.loaded='1';
+  try{
+    const r=await fetch('/api/zoom/recordings');
+    const d=await r.json();
+    if(d.error){el.innerHTML='<div class="eld">'+esc(d.error)+'</div>';return;}
+    const recs=d.recordings||[];
+    if(!recs.length){el.innerHTML='<div class="eld">No cloud recordings in the last 30 days.</div>';return;}
+    let html='';
+    recs.forEach(rec=>{
+      const dt=rec.start_time?new Date(rec.start_time):null;
+      const dateStr=dt?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'}):'';
+      const timeStr=dt?dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
+      const durMin=rec.duration||0;
+      const sizeMB=rec.total_size?Math.round(rec.total_size/1024/1024)+'MB':'';
+      const hasTranscript=rec.recording_files?.some(f=>f.file_type==='TRANSCRIPT'||f.recording_type==='audio_transcript');
+      html+=`<div class="ti" style="cursor:default;">
+        <div class="ti-priority ${hasTranscript?'high':'normal'}"></div>
+        <div style="font-size:18px;width:28px;text-align:center;flex-shrink:0;">📹</div>
+        <div class="ti-body">
+          <div class="ti-title">${esc(rec.topic||'Recording')}</div>
+          <div class="ti-meta"><span>${dateStr} ${timeStr}</span><span>${durMin} min</span><span>${sizeMB}</span>${hasTranscript?'<span style="color:var(--green);">✓ Transcript</span>':''}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          ${rec.share_url?`<a href="${esc(rec.share_url)}" target="_blank" class="ti-btn" style="text-decoration:none;">▶ Play</a>`:''}
+          ${hasTranscript?`<button class="ti-btn" style="background:var(--accent-glow);color:var(--accent);border-color:var(--accent);" onclick="processTranscript('${rec.id}','${esc(rec.topic||'')}')">🧠 Process</button>`:''}
+          <button class="ti-btn del" onclick="deleteRecording('${rec.id}')">🗑</button>
+        </div>
+      </div>`;
+    });
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<div class="eld">Error loading recordings.</div>';}
+}
+
+async function processTranscript(meetingId,topic){
+  const btn=event.target;
+  btn.disabled=true;btn.textContent='Fetching...';
+  try{
+    // 1. Fetch transcript
+    const r=await fetch('/api/zoom/transcript?id='+meetingId);
+    const d=await r.json();
+    if(d.error){btn.textContent='No transcript';btn.style.background='var(--red-dim)';btn.style.color='var(--red)';setTimeout(()=>{btn.textContent='🧠 Process';btn.style.background='';btn.style.color='';btn.disabled=false;},2000);return;}
+
+    btn.textContent='Analyzing with AI...';
+
+    // 2. Send to Claude for extraction
+    const aiResp=await fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      model:'claude',
+      prompt:`You are analyzing a Zoom meeting transcript. Extract:\n1. KEY DECISIONS made\n2. ACTION ITEMS with owner name and deadline if mentioned\n3. FOLLOW-UP items needed\n4. Brief 3-sentence SUMMARY\n\nFormat as JSON: {"summary":"...","decisions":["..."],"action_items":[{"task":"...","owner":"...","deadline":"..."}],"follow_ups":["..."]}\n\nMeeting: ${topic}\nDate: ${d.start_time||''}\n\nTranscript:\n${d.transcript_text.substring(0,8000)}`
+    })});
+    const aiData=await aiResp.json();
+    const reply=aiData.reply||'';
+
+    // 3. Parse AI response
+    let parsed;
+    try{
+      const jsonMatch=reply.match(/\{[\s\S]*\}/);
+      parsed=jsonMatch?JSON.parse(jsonMatch[0]):{summary:reply,decisions:[],action_items:[],follow_ups:[]};
+    }catch(e){parsed={summary:reply,decisions:[],action_items:[],follow_ups:[]};}
+
+    // 4. Store in processed transcripts
+    processedTranscripts.unshift({
+      meetingId,topic,date:d.start_time||'',
+      wordCount:d.word_count||0,
+      ...parsed,
+      processedAt:new Date().toISOString()
+    });
+    renderProcessedTranscripts();
+
+    btn.textContent='Done ✓';btn.style.background='var(--green-dim)';btn.style.color='var(--green)';
+    setTimeout(()=>{btn.textContent='🧠 Process';btn.style.background='';btn.style.color='';btn.disabled=false;},2000);
+  }catch(e){
+    btn.textContent='Error';btn.style.background='var(--red-dim)';btn.style.color='var(--red)';
+    setTimeout(()=>{btn.textContent='🧠 Process';btn.style.background='';btn.style.color='';btn.disabled=false;},2000);
+  }
+}
+
+function renderProcessedTranscripts(){
+  const el=document.getElementById('ztranscripts');
+  if(!processedTranscripts.length){el.innerHTML='<div class="eld">No processed transcripts yet.</div>';return;}
+  let html='';
+  processedTranscripts.forEach((t,idx)=>{
+    const dt=t.date?new Date(t.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'}):'';
+    html+=`<div style="padding:18px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
+        <div><div style="font-size:15px;font-weight:600;">${esc(t.topic||'Meeting')}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${dt} · ${t.wordCount||0} words</div></div>
+      </div>
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.6;margin-bottom:12px;">${esc(t.summary||'')}</div>
+      ${t.action_items&&t.action_items.length?`<div style="margin-bottom:10px;"><div style="font-size:11px;color:var(--accent);font-family:var(--mono);margin-bottom:6px;">ACTION ITEMS</div>
+        ${t.action_items.map(ai=>`<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(42,46,58,0.3);">
+          <div style="flex:1;font-size:13px;">${esc(ai.task||'')}${ai.owner?' <span style="color:var(--amber);font-size:11px;">→ '+esc(ai.owner)+'</span>':''}${ai.deadline?' <span style="color:var(--red);font-size:11px;">by '+esc(ai.deadline)+'</span>':''}</div>
+          <button class="ti-btn" style="padding:3px 8px;font-size:10px;" onclick="addZoomTask('${esc(ai.task||'')}','${esc(ai.owner||'')}','${esc(ai.deadline||'')}','${esc(t.topic||'')}')">+ Task</button>
+        </div>`).join('')}</div>`:''}
+      ${t.decisions&&t.decisions.length?`<div style="margin-bottom:10px;"><div style="font-size:11px;color:var(--green);font-family:var(--mono);margin-bottom:6px;">DECISIONS</div>
+        ${t.decisions.map(d=>`<div style="font-size:12px;color:var(--text-dim);padding:4px 0;">• ${esc(d)}</div>`).join('')}</div>`:''}
+      ${t.follow_ups&&t.follow_ups.length?`<div><div style="font-size:11px;color:var(--amber);font-family:var(--mono);margin-bottom:6px;">FOLLOW-UPS</div>
+        ${t.follow_ups.map(f=>`<div style="font-size:12px;color:var(--text-dim);padding:4px 0;">• ${esc(f)}</div>`).join('')}</div>`:''}
+    </div>`;
+  });
+  el.innerHTML=html;
+}
+
+function addZoomTask(task,owner,deadline,meetingTopic){
+  editingTaskId=null;
+  document.getElementById('modal-title').textContent='Task from Zoom';
+  document.getElementById('tf-title').value=task;
+  document.getElementById('tf-desc').value='From Zoom meeting: '+meetingTopic+(owner?'\nAssigned to: '+owner:'');
+  document.getElementById('tf-priority').value='high';
+  document.getElementById('tf-status').value='todo';
+  document.getElementById('tf-cat').value='Zoom Follow-up';
+  document.getElementById('tf-due').value=deadline||'';
+  document.getElementById('tf-save').textContent='Create Task';
+  document.getElementById('task-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('tf-title').focus(),100);
+}
+
+async function deleteRecording(meetingId){
+  if(!confirm('Delete this recording from Zoom cloud?'))return;
+  try{
+    const r=await fetch('/api/zoom/recordings?id='+meetingId,{method:'DELETE'});
+    const d=await r.json();
+    if(d.success)loadZoomRecordings();
+  }catch(e){}
+}
+
+// ── ZOOM MEETING CREATION ──
+function openZoomMeeting(){
+  const today=new Date();
+  document.getElementById('zm-topic').value='';
+  document.getElementById('zm-date').value=today.toISOString().split('T')[0];
+  document.getElementById('zm-dur').value='30';
+  document.getElementById('zm-pass').value='';
+  document.getElementById('zm-attendees').value='';
+  document.getElementById('zm-cal-sync').checked=true;
+  document.getElementById('zm-save').textContent='Create Meeting';
+  document.getElementById('zm-save').disabled=false;
+  document.getElementById('zoom-modal').style.display='flex';
+  // Populate time dropdown
+  const sel=document.getElementById('zm-time');
+  if(sel.options.length===0){
+    for(let h=6;h<24;h++){for(let m=0;m<60;m+=15){
+      const hh=String(h).padStart(2,'0'),mm=String(m).padStart(2,'0');
+      const val=hh+':'+mm;
+      const h12=h>12?h-12:h===0?12:h;
+      const opt=document.createElement('option');
+      opt.value=val;opt.textContent=h12+':'+mm+' '+(h>=12?'PM':'AM');
+      if(val==='09:00')opt.selected=true;
+      sel.appendChild(opt);
+    }}
+  }else{sel.value='09:00';}
+  setTimeout(()=>document.getElementById('zm-topic').focus(),100);
+}
+function closeZoomModal(){document.getElementById('zoom-modal').style.display='none';}
+document.getElementById('zoom-modal')?.addEventListener('click',function(e){if(e.target===this)closeZoomModal();});
+
+async function createZoomMeeting(){
+  const topic=document.getElementById('zm-topic').value.trim();
+  if(!topic){document.getElementById('zm-topic').style.borderColor='var(--red)';return;}
+  const date=document.getElementById('zm-date').value;
+  const time=document.getElementById('zm-time').value;
+  const dur=parseInt(document.getElementById('zm-dur').value);
+  const pass=document.getElementById('zm-pass').value.trim();
+  const attendeesStr=document.getElementById('zm-attendees').value.trim();
+  const calSync=document.getElementById('zm-cal-sync').checked;
+  const attendees=attendeesStr?attendeesStr.split(',').map(e=>e.trim()).filter(Boolean):[];
+
+  const startTime=date+'T'+time+':00';
+  const btn=document.getElementById('zm-save');
+  btn.disabled=true;btn.textContent='Creating...';
+
+  try{
+    // 1. Create Zoom meeting
+    const r=await fetch('/api/zoom/meetings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      topic,start_time:new Date(startTime).toISOString(),duration:dur,password:pass||undefined,attendees
+    })});
+    const d=await r.json();
+    if(!d.success){btn.textContent='Error';setTimeout(()=>{btn.textContent='Create Meeting';btn.disabled=false;},2000);return;}
+
+    // 2. Optionally sync to calendars
+    if(calSync){
+      btn.textContent='Syncing calendars...';
+      const endDate=new Date(startTime);
+      endDate.setMinutes(endDate.getMinutes()+dur);
+      const endH=String(endDate.getHours()).padStart(2,'0');
+      const endM=String(endDate.getMinutes()).padStart(2,'0');
+      const endDT=date+'T'+endH+':'+endM+':00';
+
+      const calPayload={subject:topic+' (Zoom)',start:startTime,end:endDT,location:d.meeting.join_url,body:'Zoom Join Link: '+d.meeting.join_url+(d.meeting.password?'\nPassword: '+d.meeting.password:''),attendees};
+      await Promise.allSettled([
+        fetch('/api/m365/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(calPayload)}),
+        fetch('/api/gcal/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(calPayload)})
+      ]);
+    }
+
+    btn.textContent='Created ✓';btn.style.background='var(--green)';
+    setTimeout(()=>{closeZoomModal();btn.textContent='Create Meeting';btn.style.background='';btn.disabled=false;loadZoomMeetings();if(calSync){loadCal();fetchMCEvents();}},1500);
+  }catch(e){
+    btn.textContent='Failed';btn.disabled=false;
+    setTimeout(()=>{btn.textContent='Create Meeting';},2000);
+  }
 }
 
 // ── TASKS SYSTEM ──
