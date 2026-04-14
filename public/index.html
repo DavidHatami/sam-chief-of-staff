@@ -102,6 +102,7 @@
 .email-acct{padding:6px 12px;border-radius:6px;font-size:11px;background:var(--surface);border:1px solid var(--border);cursor:pointer;color:var(--text-dim);transition:all 0.15s;}
 .email-acct:hover{border-color:var(--accent);color:var(--text);}.email-acct.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
 #email-drag:hover{background:var(--accent)!important;}
+#sb-drag:hover{background:var(--accent)!important;}
 .etb-f{padding:6px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;}
 .etb-f:hover{border-color:var(--accent);color:var(--text);}.etb-f.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
 .ti{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;transition:background 0.1s;cursor:pointer;}
@@ -124,7 +125,7 @@
 </style>
 </head>
 <body>
-<div class="sidebar">
+<div class="sidebar" id="main-sidebar">
   <div class="sb-brand"><div class="icon">S</div><div><div class="bt">Secret Agent Man</div><div class="bs">Chief of Staff</div></div></div>
   <div class="sb-nav">
     <div class="ns">Command Center</div>
@@ -139,7 +140,8 @@
   </div>
   <div class="sb-foot"><span class="dot"></span><span>ONLINE</span></div>
 </div>
-<div class="main">
+<div id="sb-drag" style="position:fixed;top:0;bottom:0;width:5px;cursor:col-resize;z-index:101;background:transparent;transition:background 0.15s;" onmousedown="startSBDrag(event)"></div>
+<div class="main" id="main-content">
 <div id="p-dash" class="page active">
   <div class="hdr"><div><h1 id="greeting"></h1><p class="hdr-sub">Secret Agent Man has everything under control.</p></div><div class="hdr-time"><div class="t" id="clock"></div><div class="d" id="datestr"></div></div></div>
   <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;margin-bottom:24px;">
@@ -372,12 +374,29 @@
 <div id="p-integrations" class="page">
   <div class="hdr"><h1>Integrations</h1></div>
   <div class="ig">
-    <div class="ic"><div class="ii">📅</div><h4>Google Calendar</h4><p>dh30111@gmail.com — Full read/write. Google Meet enabled.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
+    <div class="ic"><div class="ii">📅</div><h4>Google Calendar</h4><p>dh30111@gmail.com — Full read/write. Dual-sync with M365.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
     <div class="ic"><div class="ii">📧</div><h4>Outlook / M365</h4><p>admin@edupolicy.ai — Mail read/send + Calendar via Graph API.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
+    <div class="ic"><div class="ii">📩</div><h4>Gmail</h4><p>dh30111@gmail.com — Read inbox, send, reply via Gmail API.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
     <div class="ic"><div class="ii">🚀</div><h4>Netlify</h4><p>sam-chief-of-staff.netlify.app — Auto-deploys from GitHub.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● DEPLOYED</div></div>
     <div class="ic"><div class="ii">✉️</div><h4>Resend</h4><p>booking@edupolicy.ai — Auto booking confirmations.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● ACTIVE</div></div>
     <div class="ic"><div class="ii">🐙</div><h4>GitHub</h4><p>DavidHatami/sam-chief-of-staff — Linked for auto-deploy.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● LINKED</div></div>
     <div class="ic"><div class="ii">🤖</div><h4>Anthropic Console</h4><p>SAM managed agent — Vault creds stored.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● ACTIVE</div></div>
+    <div class="ic"><div class="ii">📬</div><h4>Yahoo Mail</h4><p>dh30111@yahoo.com — Requires IMAP proxy.</p><div class="is" style="background:var(--amber-dim);color:var(--amber);">● QUEUED</div></div>
+  </div>
+  <div style="margin-top:24px;">
+    <div class="hdr"><h1>Data Storage</h1></div>
+    <div class="ig" style="grid-template-columns:repeat(2,1fr);">
+      <div class="ic" style="cursor:pointer;" onclick="go('tasks',document.querySelectorAll('.ni')[3]);setTimeout(()=>{const ab=document.querySelector('.etb-f:last-child');if(ab)filterTasks('archived',ab);},200);">
+        <div class="ii">📦</div><h4>Archived Tasks</h4><p>Tasks marked as archived are stored permanently in Netlify Blobs. Click to view your archive.</p>
+        <div id="archive-count" style="font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--mono);"></div>
+        <div class="is" style="background:var(--green-dim);color:var(--green);">● PERSISTENT STORAGE</div>
+      </div>
+      <div class="ic">
+        <div class="ii">💾</div><h4>Task Database</h4><p>All tasks (active, done, archived) stored in Netlify Blobs with strong consistency. Data persists across deploys and sessions.</p>
+        <div id="total-task-count" style="font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--mono);"></div>
+        <div class="is" style="background:var(--green-dim);color:var(--green);">● NETLIFY BLOBS</div>
+      </div>
+    </div>
   </div>
 </div>
 </div>
@@ -1019,6 +1038,52 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal()
 
 // Load tasks on init
 loadTasks();
+
+// ── RESIZABLE SIDEBAR ──
+let sbDragging=false;
+function startSBDrag(e){
+  sbDragging=true;
+  document.body.style.cursor='col-resize';
+  document.body.style.userSelect='none';
+  document.getElementById('sb-drag').style.background='var(--accent)';
+  e.preventDefault();
+}
+document.addEventListener('mousemove',function(e){
+  if(!sbDragging)return;
+  let w=e.clientX;
+  if(w<180)w=180;
+  if(w>400)w=400;
+  document.getElementById('main-sidebar').style.width=w+'px';
+  document.getElementById('main-content').style.marginLeft=w+'px';
+  document.getElementById('sb-drag').style.left=w+'px';
+  document.documentElement.style.setProperty('--sidebar-w',w+'px');
+});
+document.addEventListener('mouseup',function(){
+  if(!sbDragging)return;
+  sbDragging=false;
+  document.body.style.cursor='';
+  document.body.style.userSelect='';
+  document.getElementById('sb-drag').style.background='transparent';
+});
+// Position drag handle on load
+(function(){
+  const sb=document.getElementById('main-sidebar');
+  const drag=document.getElementById('sb-drag');
+  if(sb&&drag)drag.style.left=sb.offsetWidth+'px';
+})();
+
+// ── UPDATE INTEGRATIONS PAGE COUNTS ──
+function updateIntegrationCounts(){
+  const archived=allTasks.filter(t=>t.status==='archived').length;
+  const total=allTasks.length;
+  const ac=document.getElementById('archive-count');
+  const tc=document.getElementById('total-task-count');
+  if(ac)ac.textContent=archived+' archived task'+(archived!==1?'s':'');
+  if(tc)tc.textContent=total+' total task'+(total!==1?'s':'')+' stored';
+}
+// Hook into loadTasks
+const origUpdateDash=updateDashboardTasks;
+updateDashboardTasks=function(){origUpdateDash();updateIntegrationCounts();};
 </script>
 </body>
 </html>
