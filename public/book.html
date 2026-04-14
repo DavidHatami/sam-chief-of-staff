@@ -318,25 +318,39 @@ function pickTime(el,s){
   goStep(4);
 }
 
-// Handle form submission via Netlify Forms with AJAX
-document.getElementById('booking-form').addEventListener('submit',function(ev){
+// Handle form submission via Netlify Forms + Resend email
+document.getElementById('booking-form').addEventListener('submit',async function(ev){
   ev.preventDefault();
   const btn=document.getElementById('btn-book');
   btn.disabled=true;btn.textContent='Submitting...';
   const fd=new FormData(this);
-  fetch('/',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fd).toString()})
-  .then(resp=>{
-    if(!resp.ok)throw new Error('Submit failed');
-    const ds=mDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-    const endLabel=fmtT(mTime.eH,mTime.eM);
+  const ds=mDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const endLabel=fmtT(mTime.eH,mTime.eM);
+  try{
+    // 1. Submit to Netlify Forms (backup record)
+    await fetch('/',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fd).toString()});
+    // 2. Send confirmation emails via Resend
+    const emailPayload={
+      name:fd.get('name'),
+      email:fd.get('email'),
+      type:mType,
+      duration:mDur,
+      date:ds,
+      time:mTime.label+' – '+endLabel+' ET',
+      startISO:fd.get('meeting-datetime-start'),
+      endISO:fd.get('meeting-datetime-end'),
+      org:fd.get('organization')||'',
+      notes:fd.get('notes')||'',
+      platform:fd.get('platform')||'Google Meet'
+    };
+    fetch('/api/send-confirmation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(emailPayload)}).catch(()=>{});
+    // 3. Show confirmation
     document.getElementById('confirm-detail').innerHTML=
       mType+'<br>'+ds+' at '+mTime.label+' – '+endLabel+' ET<br>with Dr. David Hatami';
     goStep(5);
-  })
-  .catch(err=>{
+  }catch(err){
     alert('Something went wrong. Please try again or email admin@EduPolicy.ai directly.');
-  })
-  .finally(()=>{btn.disabled=false;btn.textContent='Confirm Booking';});
+  }finally{btn.disabled=false;btn.textContent='Confirm Booking';}
 });
 </script>
 </body>
