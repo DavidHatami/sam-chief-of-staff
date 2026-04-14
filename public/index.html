@@ -127,7 +127,98 @@
 .ti-priority{width:4px;height:32px;border-radius:2px;flex-shrink:0;}
 .ti-priority.urgent{background:var(--red);}.ti-priority.high{background:var(--amber);}.ti-priority.normal{background:var(--accent);}.ti-priority.low{background:var(--text-muted);}
 .sidebar.collapsed{width:60px!important;}.sidebar.collapsed .sb-brand .bt,.sidebar.collapsed .sb-brand .bs,.sidebar.collapsed .ni span:not(.nic),.sidebar.collapsed .ns,.sidebar.collapsed #sb-status-text{display:none;}.sidebar.collapsed .sb-brand{padding:14px 12px;justify-content:center;}.sidebar.collapsed .ni{justify-content:center;padding:10px;}.sidebar.collapsed .sb-foot{justify-content:center;}
-@media(max-width:768px){.sidebar{width:60px;}.sb-brand .bt,.sb-brand .bs,.ni span:not(.nic),.ns,.sb-foot span{display:none;}.sb-brand{padding:14px 12px;justify-content:center;}.ni{justify-content:center;padding:10px;}.main{margin-left:60px;}.stats,.ig{grid-template-columns:repeat(2,1fr);}.g2{grid-template-columns:1fr;}}
+
+/* ── TABLET (768px - 1024px) ── */
+@media(max-width:1024px){
+  .stats{grid-template-columns:repeat(3,1fr)!important;}
+  .ig{grid-template-columns:repeat(2,1fr)!important;}
+  #dash-split{flex-direction:column!important;}
+  #dash-left,#dash-right{flex:1 1 auto!important;max-width:100%!important;min-width:0!important;border-radius:10px!important;border:1px solid var(--border)!important;}
+  #dash-drag{display:none!important;}
+  #email-split{flex-direction:column!important;}
+  #email-left{flex:0 0 auto!important;max-width:100%!important;height:300px!important;border-radius:10px 10px 0 0!important;}
+  #email-drag{display:none!important;}
+  #email-right{height:auto!important;max-height:50vh!important;border-radius:0 0 10px 10px!important;}
+  .ai-chat{height:calc(100vh - 280px)!important;min-height:300px!important;}
+}
+
+/* ── MOBILE (under 768px) ── */
+@media(max-width:768px){
+  :root{--sidebar-w:0px;}
+  .sidebar{width:0;overflow:hidden;transition:width 0.2s;}
+  .sidebar.mobile-open{width:260px;overflow:visible;z-index:200;}
+  .main{margin-left:0!important;}
+  #sb-drag{display:none!important;}
+  .page{padding:16px!important;}
+
+  /* Mobile hamburger bar */
+  #mobile-bar{display:flex!important;}
+
+  /* Stats grid */
+  .stats{grid-template-columns:repeat(2,1fr)!important;gap:8px!important;}
+  .st .v{font-size:20px!important;}
+
+  /* Dashboard layout */
+  #dash-split{flex-direction:column!important;gap:12px!important;}
+  #dash-left,#dash-right{flex:1 1 auto!important;max-width:100%!important;min-width:0!important;border-radius:10px!important;border:1px solid var(--border)!important;}
+  #dash-drag{display:none!important;}
+  .hdr{flex-direction:column;gap:8px;align-items:flex-start!important;}
+  .hdr h1{font-size:18px!important;}
+
+  /* Mini calendar responsive */
+  div[style*="grid-template-columns:1fr 280px"]{grid-template-columns:1fr!important;}
+  .mcal{margin-top:12px;}
+
+  /* Email split stacked */
+  #email-split{flex-direction:column!important;}
+  #email-left{flex:0 0 auto!important;max-width:100%!important;height:250px!important;border-radius:10px 10px 0 0!important;}
+  #email-drag{display:none!important;}
+  #email-right{height:auto!important;max-height:50vh!important;border-radius:0 0 10px 10px!important;}
+  .email-accts{flex-wrap:wrap;}
+  .etb{flex-wrap:wrap;gap:6px;}
+
+  /* Integrations grid */
+  .ig{grid-template-columns:1fr!important;}
+
+  /* AI chat */
+  .ai-chat{height:calc(100vh - 250px)!important;min-height:250px!important;}
+  .ai-models{flex-wrap:wrap;}
+  .ai-slots{grid-template-columns:1fr!important;}
+
+  /* Task filter buttons wrap */
+  #p-tasks .etb-f,#p-events .etb-f{padding:5px 10px!important;font-size:11px!important;}
+
+  /* Modals full-width on mobile */
+  #task-modal>div>div,#event-modal>div>div,#zoom-modal>div>div{max-width:100%!important;margin:10px!important;padding:16px!important;}
+
+  /* SAM dialogue box */
+  #sam-msgs{max-height:200px!important;}
+
+  /* Calendar events */
+  #cevents{max-height:calc(100vh - 200px)!important;}
+
+  /* Scheduling cards */
+  .card{overflow-x:auto;}
+
+  /* Task inline controls stack */
+  .ti{flex-wrap:wrap;gap:8px!important;}
+  .ti-inline{flex-wrap:wrap;}
+  .ti-actions{opacity:1!important;}
+
+  /* Hide drag handles on mobile */
+  #cal-vdrag,#task-vdrag,#ai-vdrag,#events-vdrag{display:none!important;}
+}
+
+/* ── SMALL MOBILE (under 480px) ── */
+@media(max-width:480px){
+  .stats{grid-template-columns:1fr!important;}
+  .st{padding:12px 14px!important;}
+  .st .v{font-size:18px!important;}
+  .hdr h1{font-size:16px!important;}
+  .page{padding:12px!important;}
+  .ei{grid-template-columns:auto 1fr!important;}
+  .et{display:none!important;}
+}
 </style>
 </head>
 <body>
@@ -153,7 +244,16 @@
   </div>
 </div>
 <div id="sb-drag" style="position:fixed;top:0;bottom:0;width:5px;cursor:col-resize;z-index:101;background:transparent;transition:background 0.15s;" onmousedown="startSBDrag(event)"></div>
-<div class="main" id="main-content">
+<div id="mobile-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:150;" onclick="closeMobileSidebar()"></div>
+<div id="mobile-bar" style="display:none;position:fixed;top:0;left:0;right:0;height:50px;background:var(--surface);border-bottom:1px solid var(--border);z-index:99;align-items:center;padding:0 16px;gap:12px;">
+  <button onclick="openMobileSidebar()" style="background:none;border:none;color:var(--text);font-size:22px;cursor:pointer;padding:4px;">☰</button>
+  <div style="display:flex;align-items:center;gap:8px;flex:1;">
+    <div style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;">S</div>
+    <span style="font-size:14px;font-weight:600;">SAM</span>
+  </div>
+  <div id="mobile-clock" style="font-family:var(--mono);font-size:12px;color:var(--text-dim);"></div>
+</div>
+<div class="main" id="main-content" style="padding-top:0;">
 <div id="p-dash" class="page active">
   <div class="hdr"><div><h1 id="greeting"></h1><p class="hdr-sub">Secret Agent Man has everything under control.</p></div><div class="hdr-time"><div class="t" id="clock"></div><div class="d" id="datestr"></div></div></div>
   <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;margin-bottom:24px;">
@@ -588,6 +688,41 @@ function toggleSidebar(){
     const btn=document.getElementById('sb-collapse-btn');
     if(sb){sb.classList.add('collapsed');mc.style.marginLeft='60px';drag.style.left='60px';document.documentElement.style.setProperty('--sidebar-w','60px');if(btn)btn.textContent='▶';}
   }
+})();
+
+// ── MOBILE SIDEBAR ──
+function openMobileSidebar(){
+  const sb=document.getElementById('main-sidebar');
+  const overlay=document.getElementById('mobile-overlay');
+  sb.classList.add('mobile-open');
+  sb.classList.remove('collapsed');
+  overlay.style.display='block';
+}
+function closeMobileSidebar(){
+  const sb=document.getElementById('main-sidebar');
+  const overlay=document.getElementById('mobile-overlay');
+  sb.classList.remove('mobile-open');
+  overlay.style.display='none';
+}
+// Close mobile sidebar when navigating
+const origGo=go;
+go=function(id,el){origGo(id,el);if(window.innerWidth<=768)closeMobileSidebar();};
+// Mobile clock
+function updateMobileClock(){
+  const el=document.getElementById('mobile-clock');
+  if(el)el.textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:'America/New_York'});
+}
+setInterval(updateMobileClock,1000);updateMobileClock();
+// Add top padding on mobile for the bar
+(function(){
+  if(window.innerWidth<=768){
+    document.querySelectorAll('.page').forEach(p=>{p.style.paddingTop='66px';});
+  }
+  window.addEventListener('resize',function(){
+    const isMobile=window.innerWidth<=768;
+    document.querySelectorAll('.page').forEach(p=>{p.style.paddingTop=isMobile?'66px':'';});
+    if(!isMobile)closeMobileSidebar();
+  });
 })();
 
 // ── SAM DIALOGUE BOX ──
