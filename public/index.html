@@ -103,6 +103,10 @@
 .email-acct:hover{border-color:var(--accent);color:var(--text);}.email-acct.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
 #email-drag:hover{background:var(--accent)!important;}
 #sb-drag:hover{background:var(--accent)!important;}
+#dash-drag:hover{background:var(--accent)!important;}
+#ai-vdrag:hover{background:var(--accent)!important;}
+#cal-vdrag:hover{background:var(--accent)!important;}
+#task-vdrag:hover{background:var(--accent)!important;}
 .etb-f{padding:6px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;}
 .etb-f:hover{border-color:var(--accent);color:var(--text);}.etb-f.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
 .ti{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;transition:background 0.1s;cursor:pointer;}
@@ -156,11 +160,14 @@
       <div class="mcal-g" id="mc-grid"></div>
     </div>
   </div>
-  <div class="g2">
-    <div class="card"><div class="ch"><h3>Priority Tasks</h3><span class="badge" style="cursor:pointer" onclick="go('tasks',document.querySelectorAll('.ni')[3])">VIEW ALL</span></div>
+  <div id="dash-split" style="display:flex;gap:0;margin-bottom:24px;">
+    <div id="dash-left" class="card" style="flex:0 0 50%;min-width:280px;max-width:70%;border-radius:10px 0 0 10px;border-right:none;overflow:hidden;">
+      <div class="ch"><h3>Priority Tasks</h3><span class="badge" style="cursor:pointer" onclick="go('tasks',document.querySelectorAll('.ni')[3])">VIEW ALL</span></div>
       <div id="dtasks" style="max-height:340px;overflow-y:auto;"><div class="eld">Loading tasks...</div></div>
     </div>
-    <div class="card"><div class="ch"><h3>Latest Emails</h3><span class="badge" style="cursor:pointer" onclick="go('email',document.querySelectorAll('.ni')[1])">VIEW ALL</span></div>
+    <div id="dash-drag" style="width:6px;cursor:col-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;" onmousedown="startDashDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:30px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
+    <div id="dash-right" class="card" style="flex:1;border-radius:0 10px 10px 0;border-left:none;overflow:hidden;">
+      <div class="ch"><h3>Latest Emails</h3><span class="badge" style="cursor:pointer" onclick="go('email',document.querySelectorAll('.ni')[1])">VIEW ALL</span></div>
       <div id="demails" style="max-height:340px;overflow-y:auto;"><div class="eld">Loading Outlook...</div></div>
     </div>
   </div>
@@ -226,7 +233,8 @@
       <button onclick="loadCal()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
     </div>
   </div>
-  <div id="cevents"><div class="eld">Loading calendar...</div></div>
+  <div id="cevents" style="max-height:calc(100vh - 220px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;"><div class="eld">Loading calendar...</div></div>
+  <div id="cal-vdrag" style="height:6px;cursor:row-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;border-radius:3px;margin:2px 0;" onmousedown="startCalDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:2px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
   <!-- Add Event Modal -->
   <div id="event-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:500px;margin:20px;">
@@ -290,6 +298,7 @@
       <button id="ai-send" onclick="sendAI()">Send</button>
     </div>
   </div>
+  <div id="ai-vdrag" style="height:6px;cursor:row-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;border-radius:3px;margin:2px 0;" onmousedown="startAIDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:2px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
   <div class="ai-slots">
     <div class="ai-slot"><h4>Anthropic (Claude)</h4><p>claude-sonnet-4-20250514 — via Anthropic API</p><div class="slot-status" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
     <div class="ai-slot"><h4>OpenAI (GPT)</h4><p>gpt-4o — via OpenAI API</p><div class="slot-status" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
@@ -322,8 +331,9 @@
     <button class="etb-f" onclick="filterTasks('archived',this)">Archived</button>
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
-    <div id="tlist"><div class="eld">Loading tasks...</div></div>
+    <div id="tlist" style="max-height:calc(100vh - 280px);overflow-y:auto;"><div class="eld">Loading tasks...</div></div>
   </div>
+  <div id="task-vdrag" style="height:6px;cursor:row-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;border-radius:3px;margin:2px 0;" onmousedown="startTaskDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:2px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
   <!-- Add/Edit Task Modal -->
   <div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:none;align-items:center;justify-content:center;">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:480px;margin:20px;">
@@ -603,7 +613,166 @@ document.addEventListener('mouseup',function(){
   document.body.style.userSelect='';
   const drag=document.getElementById('email-drag');
   if(drag)drag.style.background='var(--border)';
+  // Persist email pane width
+  const left=document.getElementById('email-left');
+  if(left){const w=left.getBoundingClientRect().width;localStorage.setItem('sam-email-w',Math.round(w));}
 });
+// Restore email pane width on load
+(function(){
+  const saved=localStorage.getItem('sam-email-w');
+  if(saved){
+    const left=document.getElementById('email-left');
+    if(left){const w=Math.max(280,parseInt(saved));left.style.flex='0 0 '+w+'px';}
+  }
+})();
+
+// ── RESIZABLE DASHBOARD SPLIT ──
+let dashDragging=false;
+function startDashDrag(e){
+  dashDragging=true;
+  document.body.style.cursor='col-resize';
+  document.body.style.userSelect='none';
+  document.getElementById('dash-drag').style.background='var(--accent)';
+  e.preventDefault();
+}
+document.addEventListener('mousemove',function(e){
+  if(!dashDragging)return;
+  const split=document.getElementById('dash-split');
+  const left=document.getElementById('dash-left');
+  if(!split||!left)return;
+  const rect=split.getBoundingClientRect();
+  let newW=e.clientX-rect.left;
+  if(newW<280)newW=280;
+  if(newW>rect.width*0.70)newW=rect.width*0.70;
+  left.style.flex='0 0 '+newW+'px';
+});
+document.addEventListener('mouseup',function(){
+  if(!dashDragging)return;
+  dashDragging=false;
+  document.body.style.cursor='';
+  document.body.style.userSelect='';
+  document.getElementById('dash-drag').style.background='var(--border)';
+  const left=document.getElementById('dash-left');
+  if(left){const w=left.getBoundingClientRect().width;const split=document.getElementById('dash-split');if(split){const pct=Math.round((w/split.getBoundingClientRect().width)*100);localStorage.setItem('sam-dash-pct',pct);}}
+});
+// Restore dashboard split ratio
+(function(){
+  const saved=localStorage.getItem('sam-dash-pct');
+  if(saved){
+    const left=document.getElementById('dash-left');
+    if(left){left.style.flex='0 0 '+saved+'%';}
+  }
+})();
+
+// ── RESIZABLE AI WORKBENCH CHAT ──
+let aiDragging=false;
+function startAIDrag(e){
+  aiDragging=true;
+  document.body.style.cursor='row-resize';
+  document.body.style.userSelect='none';
+  document.getElementById('ai-vdrag').style.background='var(--accent)';
+  e.preventDefault();
+}
+document.addEventListener('mousemove',function(e){
+  if(!aiDragging)return;
+  const chat=document.querySelector('.ai-chat');
+  if(!chat)return;
+  const rect=chat.parentElement.getBoundingClientRect();
+  let newH=e.clientY-chat.getBoundingClientRect().top;
+  if(newH<200)newH=200;
+  if(newH>window.innerHeight-200)newH=window.innerHeight-200;
+  chat.style.height=newH+'px';
+  chat.style.minHeight=newH+'px';
+});
+document.addEventListener('mouseup',function(){
+  if(!aiDragging)return;
+  aiDragging=false;
+  document.body.style.cursor='';
+  document.body.style.userSelect='';
+  document.getElementById('ai-vdrag').style.background='var(--border)';
+  const chat=document.querySelector('.ai-chat');
+  if(chat)localStorage.setItem('sam-ai-h',Math.round(chat.getBoundingClientRect().height));
+});
+// Restore AI chat height
+(function(){
+  const saved=localStorage.getItem('sam-ai-h');
+  if(saved){
+    const chat=document.querySelector('.ai-chat');
+    if(chat){const h=Math.max(200,parseInt(saved));chat.style.height=h+'px';chat.style.minHeight=h+'px';}
+  }
+})();
+
+// ── RESIZABLE CALENDAR EVENTS ──
+let calDragging=false;
+function startCalDrag(e){
+  calDragging=true;
+  document.body.style.cursor='row-resize';
+  document.body.style.userSelect='none';
+  document.getElementById('cal-vdrag').style.background='var(--accent)';
+  e.preventDefault();
+}
+document.addEventListener('mousemove',function(e){
+  if(!calDragging)return;
+  const cev=document.getElementById('cevents');
+  if(!cev)return;
+  let newH=e.clientY-cev.getBoundingClientRect().top;
+  if(newH<150)newH=150;
+  if(newH>window.innerHeight-180)newH=window.innerHeight-180;
+  cev.style.maxHeight=newH+'px';
+});
+document.addEventListener('mouseup',function(){
+  if(!calDragging)return;
+  calDragging=false;
+  document.body.style.cursor='';
+  document.body.style.userSelect='';
+  document.getElementById('cal-vdrag').style.background='var(--border)';
+  const cev=document.getElementById('cevents');
+  if(cev)localStorage.setItem('sam-cal-h',Math.round(cev.getBoundingClientRect().height));
+});
+// Restore calendar height
+(function(){
+  const saved=localStorage.getItem('sam-cal-h');
+  if(saved){
+    const cev=document.getElementById('cevents');
+    if(cev){cev.style.maxHeight=Math.max(150,parseInt(saved))+'px';}
+  }
+})();
+
+// ── RESIZABLE TASK LIST ──
+let taskDragging=false;
+function startTaskDrag(e){
+  taskDragging=true;
+  document.body.style.cursor='row-resize';
+  document.body.style.userSelect='none';
+  document.getElementById('task-vdrag').style.background='var(--accent)';
+  e.preventDefault();
+}
+document.addEventListener('mousemove',function(e){
+  if(!taskDragging)return;
+  const tl=document.getElementById('tlist');
+  if(!tl)return;
+  let newH=e.clientY-tl.getBoundingClientRect().top;
+  if(newH<150)newH=150;
+  if(newH>window.innerHeight-180)newH=window.innerHeight-180;
+  tl.style.maxHeight=newH+'px';
+});
+document.addEventListener('mouseup',function(){
+  if(!taskDragging)return;
+  taskDragging=false;
+  document.body.style.cursor='';
+  document.body.style.userSelect='';
+  document.getElementById('task-vdrag').style.background='var(--border)';
+  const tl=document.getElementById('tlist');
+  if(tl)localStorage.setItem('sam-task-h',Math.round(tl.getBoundingClientRect().height));
+});
+// Restore task list height
+(function(){
+  const saved=localStorage.getItem('sam-task-h');
+  if(saved){
+    const tl=document.getElementById('tlist');
+    if(tl){tl.style.maxHeight=Math.max(150,parseInt(saved))+'px';}
+  }
+})();
 
 let cLoaded=false;
 async function loadCal(){
@@ -1072,12 +1241,21 @@ document.addEventListener('mouseup',function(){
   document.body.style.cursor='';
   document.body.style.userSelect='';
   document.getElementById('sb-drag').style.background='transparent';
+  // Persist sidebar width
+  const sb=document.getElementById('main-sidebar');
+  if(sb)localStorage.setItem('sam-sb-w',sb.style.width.replace('px',''));
 });
-// Position drag handle on load
+// Position drag handle on load + restore saved width
 (function(){
   const sb=document.getElementById('main-sidebar');
   const drag=document.getElementById('sb-drag');
-  if(sb&&drag)drag.style.left=sb.offsetWidth+'px';
+  const mc=document.getElementById('main-content');
+  const saved=localStorage.getItem('sam-sb-w');
+  if(saved&&sb&&drag&&mc){
+    const w=Math.max(180,Math.min(400,parseInt(saved)));
+    sb.style.width=w+'px';mc.style.marginLeft=w+'px';drag.style.left=w+'px';
+    document.documentElement.style.setProperty('--sidebar-w',w+'px');
+  }else if(sb&&drag){drag.style.left=sb.offsetWidth+'px';}
 })();
 
 // ── UPDATE INTEGRATIONS PAGE COUNTS ──
