@@ -270,8 +270,23 @@ async function loadCal(){
 loadE('inbox',document.getElementById('btn-inbox'));
 
 // ── MINI CALENDAR ──
-let mcY,mcM;(function(){const n=new Date();mcY=n.getFullYear();mcM=n.getMonth();renderMC();})();
-function mcMo(d){mcM+=d;if(mcM>11){mcM=0;mcY++;}if(mcM<0){mcM=11;mcY--;}renderMC();}
+let mcY,mcM,mcEventDays=new Set();
+(function(){const n=new Date();mcY=n.getFullYear();mcM=n.getMonth();renderMC();fetchMCEvents();})();
+function mcMo(d){mcM+=d;if(mcM>11){mcM=0;mcY++;}if(mcM<0){mcM=11;mcY--;}renderMC();fetchMCEvents();}
+async function fetchMCEvents(){
+  try{
+    const s=new Date(mcY,mcM,1).toISOString();
+    const e=new Date(mcY,mcM+1,0,23,59,59).toISOString();
+    const r=await fetch('/api/m365/calendar?start='+encodeURIComponent(s)+'&end='+encodeURIComponent(e));
+    const d=await r.json();
+    mcEventDays=new Set();
+    (d.value||[]).forEach(ev=>{
+      const dt=new Date(ev.start?.dateTime+'Z');
+      mcEventDays.add(dt.getDate());
+    });
+    renderMC();
+  }catch(e){}
+}
 function renderMC(){
   const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   document.getElementById('mc-label').textContent=MN[mcM]+' '+mcY;
@@ -284,7 +299,10 @@ function renderMC(){
     const e=document.createElement('div');e.textContent=d;
     const dt=new Date(mcY,mcM,d);
     const isToday=dt.getTime()===td.getTime();
-    e.className='mcal-d av'+(isToday?' today':'');
+    const hasEvent=mcEventDays.has(d);
+    e.className='mcal-d av'+(isToday?' today':'')+(hasEvent?' has-ev':'');
+    if(hasEvent)e.style.cursor='pointer';
+    if(hasEvent)e.onclick=function(){go('calendar',document.querySelectorAll('.ni')[2]);};
     g.appendChild(e);
   }
 }
