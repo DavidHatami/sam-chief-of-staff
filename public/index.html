@@ -436,7 +436,7 @@
           </select>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
         <div>
           <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Category</label>
           <input id="tf-cat" type="text" placeholder="e.g., EduPolicy, Teaching..." style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
@@ -445,6 +445,17 @@
           <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Due Date</label>
           <input id="tf-due" type="date" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
         </div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Notes</label>
+        <textarea id="tf-notes" placeholder="Additional notes, context, links..." style="width:100%;padding:10px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;min-height:60px;resize:vertical;"></textarea>
+      </div>
+      <div id="tf-subtasks-section" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <label style="font-size:11px;color:var(--text-muted);">Sub-Tasks</label>
+          <button onclick="addSubTaskField()" type="button" style="padding:3px 10px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:11px;cursor:pointer;">+ Add Sub-Task</button>
+        </div>
+        <div id="tf-subtask-list"></div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button onclick="closeModal()" style="padding:8px 18px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:13px;cursor:pointer;">Cancel</button>
@@ -649,7 +660,6 @@ function extractTask(){
   const subj=currentEmail.subject||'(no subject)';
   const fromName=currentEmail.from?.emailAddress?.name||currentEmail.from?.emailAddress?.address||'';
   const preview=(currentEmail.bodyPreview||'').substring(0,200);
-  // Pre-fill the task modal with email data
   document.getElementById('modal-title').textContent='Extract Task from Email';
   document.getElementById('tf-title').value='Follow up: '+subj;
   document.getElementById('tf-desc').value='From: '+fromName+'\nSubject: '+subj+'\n\n'+preview;
@@ -657,6 +667,8 @@ function extractTask(){
   document.getElementById('tf-status').value='todo';
   document.getElementById('tf-cat').value='Email Follow-up';
   document.getElementById('tf-due').value='';
+  document.getElementById('tf-notes').value='';
+  document.getElementById('tf-subtask-list').innerHTML='';
   document.getElementById('tf-save').textContent='Create Task';
   editingTaskId=null;
   document.getElementById('task-modal').style.display='flex';
@@ -999,6 +1011,8 @@ function openCalTask(){
   document.getElementById('tf-cat').value='';
   const today=new Date();
   document.getElementById('tf-due').value=today.toISOString().split('T')[0];
+  document.getElementById('tf-notes').value='';
+  document.getElementById('tf-subtask-list').innerHTML='';
   document.getElementById('tf-save').textContent='Save Task';
   document.getElementById('task-modal').style.display='flex';
   setTimeout(()=>document.getElementById('tf-title').focus(),100);
@@ -1291,6 +1305,8 @@ function addZoomTask(task,owner,deadline,meetingTopic){
   document.getElementById('tf-status').value='todo';
   document.getElementById('tf-cat').value='Zoom Follow-up';
   document.getElementById('tf-due').value=deadline||'';
+  document.getElementById('tf-notes').value='';
+  document.getElementById('tf-subtask-list').innerHTML='';
   document.getElementById('tf-save').textContent='Create Task';
   document.getElementById('task-modal').style.display='flex';
   setTimeout(()=>document.getElementById('tf-title').focus(),100);
@@ -1433,6 +1449,11 @@ function renderTasks(){
       else if(diff===1) dueStr='Due tomorrow';
       metaParts.push(dueStr);
     }
+    if(t.subtasks&&t.subtasks.length){
+      const stDone=t.subtasks.filter(s=>s.done).length;
+      metaParts.push('📎 '+stDone+'/'+t.subtasks.length+' sub-tasks');
+    }
+    if(t.notes) metaParts.push('📝 Notes');
     html+=`<div class="ti" data-id="${t.id}">
       <div class="ti-priority ${priClass}"></div>
       <div class="ti-check ${checkClass}" onclick="event.stopPropagation();toggleTask('${t.id}')">${checkIcon}</div>
@@ -1520,6 +1541,8 @@ function openAddTask(){
   document.getElementById('tf-status').value='todo';
   document.getElementById('tf-cat').value='';
   document.getElementById('tf-due').value='';
+  document.getElementById('tf-notes').value='';
+  document.getElementById('tf-subtask-list').innerHTML='';
   document.getElementById('tf-save').textContent='Save Task';
   document.getElementById('task-modal').style.display='flex';
   setTimeout(()=>document.getElementById('tf-title').focus(),100);
@@ -1536,9 +1559,31 @@ function editTask(id){
   document.getElementById('tf-status').value=t.status||'todo';
   document.getElementById('tf-cat').value=t.category||'';
   document.getElementById('tf-due').value=t.dueDate||'';
+  document.getElementById('tf-notes').value=t.notes||'';
+  // Load sub-tasks
+  const stList=document.getElementById('tf-subtask-list');
+  stList.innerHTML='';
+  if(t.subtasks&&Array.isArray(t.subtasks)){
+    t.subtasks.forEach(st=>addSubTaskField(st.title,st.done));
+  }
   document.getElementById('tf-save').textContent='Update Task';
   document.getElementById('task-modal').style.display='flex';
   setTimeout(()=>document.getElementById('tf-title').focus(),100);
+}
+
+// ── SUB-TASK FIELD MANAGEMENT ──
+let subTaskCounter=0;
+function addSubTaskField(title,done){
+  subTaskCounter++;
+  const list=document.getElementById('tf-subtask-list');
+  const row=document.createElement('div');
+  row.className='subtask-row';
+  row.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+  row.innerHTML=`<input type="checkbox" class="subtask-check" ${done?'checked':''} style="accent-color:var(--accent);flex-shrink:0;">
+    <input type="text" class="subtask-input" value="${esc(title||'')}" placeholder="Sub-task..." style="flex:1;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
+    <button onclick="this.parentElement.remove()" type="button" style="padding:3px 8px;border-radius:4px;background:none;border:1px solid var(--border);color:var(--red);font-size:11px;cursor:pointer;">✕</button>`;
+  list.appendChild(row);
+  if(!title)row.querySelector('.subtask-input').focus();
 }
 
 function closeModal(){
@@ -1549,13 +1594,24 @@ function closeModal(){
 async function saveTask(){
   const title=document.getElementById('tf-title').value.trim();
   if(!title){document.getElementById('tf-title').style.borderColor='var(--red)';return;}
+  // Collect sub-tasks
+  const subtasks=[];
+  document.querySelectorAll('.subtask-row').forEach(row=>{
+    const input=row.querySelector('.subtask-input');
+    const check=row.querySelector('.subtask-check');
+    if(input&&input.value.trim()){
+      subtasks.push({title:input.value.trim(),done:check?check.checked:false});
+    }
+  });
   const payload={
     title:title,
     description:document.getElementById('tf-desc').value.trim(),
     priority:document.getElementById('tf-priority').value,
     status:document.getElementById('tf-status').value,
     category:document.getElementById('tf-cat').value.trim(),
-    dueDate:document.getElementById('tf-due').value
+    dueDate:document.getElementById('tf-due').value,
+    notes:document.getElementById('tf-notes').value.trim(),
+    subtasks:subtasks
   };
   const btn=document.getElementById('tf-save');
   btn.disabled=true;btn.textContent='Saving...';
