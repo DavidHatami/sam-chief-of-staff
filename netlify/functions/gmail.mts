@@ -71,6 +71,23 @@ export default async (req: Request, context: Context) => {
     const token = await getGoogleToken();
     const gmailBase = "https://gmail.googleapis.com/gmail/v1/users/me";
 
+    // ── DELETE / TRASH EMAIL ──
+    if (path === "/mail" && req.method === "DELETE") {
+      const msgId = url.searchParams.get("id");
+      if (!msgId) {
+        return new Response(JSON.stringify({ error: "Missing message id" }), { status: 400, headers });
+      }
+      const resp = await fetch(`${gmailBase}/messages/${msgId}/trash`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
+      }
+      return new Response(JSON.stringify({ success: true, message: "Email moved to Trash" }), { headers });
+    }
+
     // ── LIST MESSAGES ──
     if (path === "/mail" && req.method === "GET") {
       const msgId = url.searchParams.get("id");

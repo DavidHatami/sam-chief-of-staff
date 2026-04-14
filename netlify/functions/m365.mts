@@ -56,6 +56,34 @@ export default async (req: Request, context: Context) => {
     const userEmail = Netlify.env.get("M365_USER_EMAIL") || "";
     const graphBase = `https://graph.microsoft.com/v1.0/users/${userEmail}`;
 
+    // ── DELETE / TRASH EMAIL ──
+    if (path === "/mail" && req.method === "DELETE") {
+      const msgId = url.searchParams.get("id");
+      if (!msgId) {
+        return new Response(JSON.stringify({ error: "Missing message id" }), {
+          status: 400, headers: { "Content-Type": "application/json" },
+        });
+      }
+      // Move to Deleted Items folder
+      const resp = await fetch(`${graphBase}/messages/${msgId}/move`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ destinationId: "deleteditems" }),
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), {
+          status: resp.status, headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ success: true, message: "Email moved to Deleted Items" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     // ── READ MAIL ──
     if (path === "/mail" && req.method === "GET") {
       const top = url.searchParams.get("top") || "20";
