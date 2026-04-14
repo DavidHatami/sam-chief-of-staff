@@ -251,7 +251,7 @@
         </div>
         <div>
           <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Start Time</label>
-          <input id="ev-start" type="time" value="09:00" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+          <select id="ev-start" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;"></select>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
@@ -834,6 +834,26 @@ async function loadCal(){
 }
 
 // ── CALENDAR EVENT CREATION ──
+// ── POPULATE TIME DROPDOWN ──
+(function(){
+  const sel=document.getElementById('ev-start');
+  if(!sel)return;
+  for(let h=6;h<24;h++){
+    for(let m=0;m<60;m+=15){
+      const hh=String(h).padStart(2,'0');
+      const mm=String(m).padStart(2,'0');
+      const val=hh+':'+mm;
+      const h12=h>12?h-12:h===0?12:h;
+      const ampm=h>=12?'PM':'AM';
+      const label=h12+':'+mm+' '+ampm;
+      const opt=document.createElement('option');
+      opt.value=val;opt.textContent=label;
+      if(val==='09:00')opt.selected=true;
+      sel.appendChild(opt);
+    }
+  }
+})();
+
 function openAddEvent(){
   const today=new Date();
   document.getElementById('ev-title').value='';
