@@ -184,7 +184,7 @@ export default async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-opus-4-6-20250219",
           max_tokens: 2000,
           system:
             "You extract action items from meeting transcripts. Return ONLY valid JSON, no markdown fences, no preamble. Format: {\"summary\":\"3 sentence summary\",\"action_items\":[{\"task\":\"specific action\",\"owner\":\"person name or Unknown\",\"deadline\":\"date or ASAP or null\",\"priority\":\"urgent|high|normal|low\"}],\"decisions\":[\"decision made\"],\"follow_ups\":[\"item needing follow up\"]}",
