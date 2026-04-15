@@ -826,14 +826,182 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
       </div>
     </div>
   </div>
+  <!-- SAM Instructions — Permanent Memory -->
+  <div style="margin-top:24px;">
+    <div class="hdr"><div><h1>SAM Instructions</h1><p class="hdr-sub">Permanent memory — SAM remembers these across every conversation</p></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="showInstructionModal()" style="padding:8px 16px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;">+ Add Instruction</button>
+        <button onclick="loadInstructions()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻</button>
+      </div>
+    </div>
+    <!-- Stats bar -->
+    <div id="inst-stats" style="display:flex;gap:16px;padding:0 0 14px;font-size:11px;color:var(--text-muted);font-family:var(--mono);"></div>
+    <!-- Category filters -->
+    <div style="display:flex;gap:6px;padding:0 0 14px;flex-wrap:wrap;" id="inst-filters">
+      <button class="etb-f active" onclick="filterInst('all',this)">All</button>
+      <button class="etb-f" onclick="filterInst('identity',this)">Identity</button>
+      <button class="etb-f" onclick="filterInst('preferences',this)">Preferences</button>
+      <button class="etb-f" onclick="filterInst('clients',this)">Clients</button>
+      <button class="etb-f" onclick="filterInst('rules',this)">AI Rules</button>
+      <button class="etb-f" onclick="filterInst('knowledge',this)">Knowledge</button>
+      <button class="etb-f" onclick="filterInst('contacts',this)">Contacts</button>
+      <button class="etb-f" onclick="filterInst('schedule',this)">Schedule</button>
+      <button class="etb-f" onclick="filterInst('custom',this)">Custom</button>
+    </div>
+    <div id="inst-list" style="display:flex;flex-direction:column;gap:8px;max-height:500px;overflow-y:auto;"></div>
+  </div>
 </div>
+<!-- Instruction Modal -->
+<div id="inst-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:560px;max-width:90vw;max-height:80vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 id="im-title" style="font-size:16px;font-weight:700;">Add Instruction</h3>
+      <button onclick="closeInstModal()" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <input id="im-name" type="text" placeholder="Title — e.g. 'My Communication Style', 'Current Semester Teaching'" style="width:100%;padding:10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;margin-bottom:10px;">
+    <select id="im-cat" style="width:100%;padding:10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;margin-bottom:10px;">
+      <option value="identity">Identity & Background</option>
+      <option value="preferences">Preferences & Style</option>
+      <option value="clients">Current Clients & Engagements</option>
+      <option value="rules">AI Behavior Rules</option>
+      <option value="knowledge">Domain Knowledge</option>
+      <option value="contacts">Key Contacts</option>
+      <option value="schedule">Schedule & Availability</option>
+      <option value="custom">Custom</option>
+    </select>
+    <textarea id="im-content" placeholder="Write what SAM should remember. Be specific.&#10;&#10;Examples:&#10;• 'I prefer paragraph formatting over bullet points. Write at a Flesch-Kincaid grade 9-11 level.'&#10;• 'My consulting rate is $275/hour. Never quote lower without checking with me first.'&#10;• 'When writing emails for me, sign off as Dr. David Hatami, Ed.D. — Managing Director, EduPolicy.ai'" style="width:100%;padding:10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;min-height:150px;resize:vertical;margin-bottom:6px;line-height:1.6;"></textarea>
+    <div id="im-charcount" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-bottom:14px;text-align:right;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeInstModal()" class="ti-btn">Cancel</button>
+      <button id="im-save" onclick="saveInstruction()" style="padding:8px 20px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;">Save Instruction</button>
+    </div>
+  </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='integrations'&&!instLoaded)loadInstructions();}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 function tick(){const n=new Date(),h=n.getHours(),g=h<12?'Morning':h<17?'Afternoon':'Evening';document.getElementById('greeting').textContent='Good '+g+', Dr. Hatami';document.getElementById('clock').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/New_York'});document.getElementById('datestr').textContent=n.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});}
 setInterval(tick,1000);tick();
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// ── SAM INSTRUCTIONS — PERMANENT MEMORY ──
+let allInstructions=[];
+let instFilter='all';
+let editingInstId=null;
+let instLoaded=false;
+
+async function loadInstructions(){
+  instLoaded=true;
+  const el=document.getElementById('inst-list');
+  el.innerHTML='<div class="eld">Loading instructions...</div>';
+  try{
+    const r=await fetch('/api/instructions');const d=await r.json();
+    allInstructions=d.instructions||[];
+    const s=d.stats||{};
+    document.getElementById('inst-stats').innerHTML=`<span>${s.total||0} total</span><span style="color:var(--green);">${s.enabled||0} active</span><span>${s.disabled||0} paused</span><span>~${(s.charCount||0).toLocaleString()} chars</span><span>~${s.tokenEstimate||0} tokens injected per call</span>`;
+    renderInstructions();
+  }catch(e){el.innerHTML='<div class="eld">Error loading instructions.</div>';}
+}
+
+function renderInstructions(){
+  const el=document.getElementById('inst-list');
+  const filtered=instFilter==='all'?allInstructions:allInstructions.filter(i=>i.category===instFilter);
+  if(!filtered.length){el.innerHTML='<div class="eld">'+(instFilter==='all'?'No instructions yet. Add your first one — tell SAM who you are, how you work, what matters.':'No '+instFilter+' instructions.')+'</div>';return;}
+  const catIcons={identity:'👤',preferences:'⚙️',clients:'🏛️',rules:'📏',knowledge:'🧠',contacts:'👥',schedule:'📅',custom:'📝',general:'📄'};
+  let html='';
+  filtered.forEach(i=>{
+    const icon=catIcons[i.category]||'📄';
+    const preview=i.content.substring(0,120).replace(/\n/g,' ')+(i.content.length>120?'...':'');
+    const opacity=i.enabled?'1':'0.5';
+    html+=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;opacity:${opacity};transition:opacity 0.2s;">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <span style="font-size:16px;">${icon}</span>
+            <span style="font-size:13px;font-weight:600;">${esc(i.title)}</span>
+            <span style="font-size:9px;padding:2px 6px;border-radius:4px;background:var(--bg);border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);">${i.category}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-dim);line-height:1.5;">${esc(preview)}</div>
+          <div style="font-size:9px;color:var(--text-muted);font-family:var(--mono);margin-top:6px;">${i.content.length.toLocaleString()} chars · ${i.enabled?'Active':'Paused'} · Updated ${new Date(i.updated).toLocaleDateString()}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          <button onclick="toggleInst('${i.id}',${!i.enabled})" style="padding:4px 8px;border-radius:4px;background:${i.enabled?'var(--green-dim)':'var(--surface-2)'};border:1px solid ${i.enabled?'rgba(52,211,153,0.3)':'var(--border)'};color:${i.enabled?'var(--green)':'var(--text-muted)'};font-size:10px;cursor:pointer;font-family:var(--mono);">${i.enabled?'ON':'OFF'}</button>
+          <button onclick="editInst('${i.id}')" style="padding:4px 8px;border-radius:4px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-size:10px;cursor:pointer;">Edit</button>
+          <button onclick="deleteInst('${i.id}')" style="padding:4px 8px;border-radius:4px;background:var(--surface-2);border:1px solid var(--border);color:var(--red);font-size:10px;cursor:pointer;">✕</button>
+        </div>
+      </div>
+    </div>`;
+  });
+  el.innerHTML=html;
+}
+
+function filterInst(f,btn){
+  instFilter=f;
+  document.querySelectorAll('#inst-filters .etb-f').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderInstructions();
+}
+
+function showInstructionModal(editId){
+  editingInstId=editId||null;
+  const m=document.getElementById('inst-modal');
+  m.style.display='flex';
+  document.getElementById('im-title').textContent=editId?'Edit Instruction':'Add Instruction';
+  document.getElementById('im-save').textContent=editId?'Save Changes':'Save Instruction';
+  if(editId){
+    const inst=allInstructions.find(i=>i.id===editId);
+    if(inst){
+      document.getElementById('im-name').value=inst.title;
+      document.getElementById('im-cat').value=inst.category;
+      document.getElementById('im-content').value=inst.content;
+    }
+  }else{
+    document.getElementById('im-name').value='';
+    document.getElementById('im-cat').value='identity';
+    document.getElementById('im-content').value='';
+  }
+  updateInstCharCount();
+}
+
+function closeInstModal(){document.getElementById('inst-modal').style.display='none';editingInstId=null;}
+function editInst(id){showInstructionModal(id);}
+
+function updateInstCharCount(){
+  const c=document.getElementById('im-content').value.length;
+  document.getElementById('im-charcount').textContent=c.toLocaleString()+' chars · ~'+Math.ceil(c/4)+' tokens';
+}
+document.addEventListener('DOMContentLoaded',function(){
+  const ta=document.getElementById('im-content');
+  if(ta)ta.addEventListener('input',updateInstCharCount);
+});
+
+async function saveInstruction(){
+  const title=document.getElementById('im-name').value.trim();
+  const content=document.getElementById('im-content').value.trim();
+  const category=document.getElementById('im-cat').value;
+  if(!title){document.getElementById('im-name').style.borderColor='var(--red)';return;}
+  if(!content){document.getElementById('im-content').style.borderColor='var(--red)';return;}
+  const btn=document.getElementById('im-save');btn.disabled=true;btn.textContent='Saving...';
+  try{
+    const url=editingInstId?'/api/instructions/'+editingInstId:'/api/instructions';
+    const method=editingInstId?'PUT':'POST';
+    const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify({title,content,category})});
+    const d=await r.json();
+    if(d.success){closeInstModal();loadInstructions();}
+  }catch(e){}
+  btn.disabled=false;btn.textContent=editingInstId?'Save Changes':'Save Instruction';
+}
+
+async function toggleInst(id,enabled){
+  await fetch('/api/instructions/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+  loadInstructions();
+}
+
+async function deleteInst(id){
+  if(!confirm('Delete this instruction? SAM will forget this permanently.'))return;
+  await fetch('/api/instructions/'+id,{method:'DELETE'});
+  loadInstructions();
+}
 
 // ── COLLAPSIBLE SIDEBAR ──
 let sidebarCollapsed=localStorage.getItem('sam-sb-collapsed')==='true';

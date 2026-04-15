@@ -1,6 +1,7 @@
 import type { Context, Config } from "@netlify/functions";
+import { getStore } from "@netlify/blobs";
 
-const SYSTEM_PROMPT = `You are SAM (Secret Agent Man), Dr. David Hatami's AI Chief of Staff. You are a research and analysis assistant with expertise in AI ethics, higher education, policy development, and business strategy. Be direct, thorough, and actionable. When asked to compare or research across AI platforms, provide honest, evidence-based analysis. No fluff.`;
+const BASE_PROMPT = `You are SAM (Secret Agent Man), Dr. David Hatami's AI Chief of Staff. You are a research and analysis assistant with expertise in AI ethics, higher education, policy development, and business strategy. Be direct, thorough, and actionable. When asked to compare or research across AI platforms, provide honest, evidence-based analysis. No fluff.`;
 
 export default async (req: Request, context: Context) => {
   if (req.method !== "POST") {
@@ -18,6 +19,33 @@ export default async (req: Request, context: Context) => {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // ── FETCH PERMANENT INSTRUCTIONS (injected into every call) ──
+    let SYSTEM_PROMPT = BASE_PROMPT;
+    try {
+      const instStore = getStore({ name: "sam-instructions", consistency: "strong" });
+      const allInst = await instStore.get("all", { type: "json" });
+      if (allInst && Array.isArray(allInst)) {
+        const enabled = allInst.filter((i: any) => i.enabled).sort((a: any, b: any) => a.order - b.order);
+        if (enabled.length > 0) {
+          const catLabels: Record<string, string> = {
+            identity: "WHO I AM", preferences: "MY PREFERENCES", clients: "CLIENTS",
+            rules: "AI RULES", knowledge: "KNOWLEDGE", contacts: "CONTACTS",
+            schedule: "SCHEDULE", custom: "CUSTOM", general: "GENERAL",
+          };
+          const groups: Record<string, any[]> = {};
+          enabled.forEach((i: any) => { const c = i.category || "general"; if (!groups[c]) groups[c] = []; groups[c].push(i); });
+          let instCtx = "\n\n[PERMANENT INSTRUCTIONS — Always follow these]\n";
+          for (const [cat, items] of Object.entries(groups)) {
+            instCtx += `── ${catLabels[cat] || cat.toUpperCase()} ──\n`;
+            items.forEach((i: any) => { instCtx += i.content + "\n"; });
+          }
+          SYSTEM_PROMPT += instCtx;
+        }
+      }
+    } catch (e) {
+      // Instructions fetch failed silently — proceed with base prompt
     }
 
     // ── CLAUDE (Anthropic) ──
