@@ -353,6 +353,83 @@ export default async (req: Request, context: Context) => {
       );
     }
 
+    // ── PAST MEETINGS ──
+    if (path === "/past" && req.method === "GET") {
+      const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const to = new Date().toISOString().split("T")[0];
+      const resp = await zoomAPI(`/users/me/meetings?type=previous_meetings&page_size=30&from=${from}&to=${to}`, token);
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
+      }
+      const data = await resp.json();
+      return new Response(JSON.stringify({ meetings: data.meetings || [] }), { headers });
+    }
+
+    // ── MEETING PARTICIPANTS ──
+    if (path === "/participants" && req.method === "GET") {
+      const meetingId = url.searchParams.get("id");
+      if (!meetingId) return new Response(JSON.stringify({ error: "Meeting ID required" }), { status: 400, headers });
+      const resp = await zoomAPI(`/past_meetings/${meetingId}/participants?page_size=50`, token);
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
+      }
+      const data = await resp.json();
+      return new Response(JSON.stringify({ participants: data.participants || [], total: data.total_records || 0 }), { headers });
+    }
+
+    // ── INSTANT MEETING ──
+    if (path === "/instant" && req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const topic = (body as any).topic || "Instant Meeting";
+      const resp = await zoomAPI("/users/me/meetings", token, {
+        method: "POST",
+        body: JSON.stringify({
+          topic,
+          type: 1,
+          settings: { join_before_host: true, auto_recording: "cloud", waiting_room: false },
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
+      }
+      const data = await resp.json();
+      return new Response(JSON.stringify({
+        success: true,
+        meeting: { id: data.id, topic: data.topic, join_url: data.join_url, start_url: data.start_url, password: data.password },
+      }), { headers });
+    }
+
+    // ── VIEW TRANSCRIPT INLINE ──
+    if (path === "/view-transcript" && req.method === "GET") {
+      const meetingId = url.searchParams.get("id");
+      if (!meetingId) return new Response(JSON.stringify({ error: "Meeting ID required" }), { status: 400, headers });
+      const resp = await zoomAPI(`/meetings/${meetingId}/recordings`, token);
+      if (!resp.ok) return new Response(JSON.stringify({ error: "Recording not found" }), { status: 404, headers });
+      const data = await resp.json();
+      const transcriptFile = data.recording_files?.find(
+        (f: any) => f.file_type === "TRANSCRIPT" || f.recording_type === "audio_transcript"
+      );
+      if (!transcriptFile) return new Response(JSON.stringify({ error: "No transcript for this recording" }), { status: 404, headers });
+      const dlResp = await fetch(`${transcriptFile.download_url}?access_token=${token}`);
+      if (!dlResp.ok) return new Response(JSON.stringify({ error: "Failed to download transcript" }), { status: 500, headers });
+      const vttText = await dlResp.text();
+      const segments: Array<{time:string;speaker:string;text:string}> = [];
+      let curTime = "";
+      for (const line of vttText.split("\n")) {
+        const tm = line.match(/^(\d{2}:\d{2}:\d{2})\.\d{3}\s*-->/);
+        if (tm) { curTime = tm[1]; continue; }
+        if (line.trim() && !line.startsWith("WEBVTT") && !line.startsWith("NOTE") && !line.match(/^\d+$/) && curTime) {
+          const sp = line.match(/^(.+?):\s*(.+)$/);
+          segments.push(sp ? { time: curTime, speaker: sp[1].trim(), text: sp[2].trim() } : { time: curTime, speaker: "", text: line.trim() });
+        }
+      }
+      const plainText = segments.map(s => (s.speaker ? s.speaker + ": " : "") + s.text).join("\n");
+      return new Response(JSON.stringify({ topic: data.topic || "", segments, plainText, wordCount: plainText.split(/\s+/).length }), { headers });
+    }
+
     return new Response(
       JSON.stringify({ error: "Unknown Zoom endpoint: " + path }),
       { status: 404, headers }

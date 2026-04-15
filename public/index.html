@@ -429,25 +429,77 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   </div>
 </div>
 <div id="p-zoom" class="page">
-  <div class="hdr"><div><h1>Zoom</h1><p class="hdr-sub">Meetings, recordings, and transcript processing</p></div>
+  <div class="hdr"><div><h1>Zoom Command Center</h1><p class="hdr-sub">Meetings, recordings, transcripts, AI analysis — deeply integrated</p></div>
     <div style="display:flex;gap:8px;">
-      <button onclick="openZoomMeeting()" style="padding:8px 18px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">🎥 Create Meeting</button>
-      <button onclick="loadZoom()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">↻ Refresh</button>
+      <button onclick="instantZoomMeeting()" style="padding:8px 18px;border-radius:8px;background:linear-gradient(135deg,#2d8cff,#0b5cff);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">⚡ Instant Meeting</button>
+      <button onclick="openZoomMeeting()" style="padding:8px 18px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">📅 Schedule</button>
+      <button onclick="loadZoom()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻</button>
     </div>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:18px;">
-    <button class="etb-f active" onclick="zoomTab('meetings',this)">Upcoming Meetings</button>
-    <button class="etb-f" onclick="zoomTab('recordings',this)">Recordings</button>
-    <button class="etb-f" onclick="zoomTab('transcripts',this)">Processed Transcripts</button>
+  <!-- Next Meeting Hero Card -->
+  <div id="zoom-hero" style="display:none;margin:0 0 16px;padding:18px 20px;background:linear-gradient(135deg,rgba(45,140,255,0.12),rgba(124,58,237,0.08));border:1px solid rgba(45,140,255,0.2);border-radius:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-size:10px;font-family:var(--mono);color:var(--accent);letter-spacing:1px;margin-bottom:4px;">NEXT MEETING</div>
+        <div id="zh-title" style="font-size:16px;font-weight:700;margin-bottom:2px;"></div>
+        <div id="zh-time" style="font-size:13px;color:var(--text-dim);"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div id="zh-countdown" style="font-size:22px;font-weight:700;color:var(--accent);font-family:var(--mono);min-width:80px;text-align:right;"></div>
+        <a id="zh-join" href="#" target="_blank" style="padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#2d8cff,#0b5cff);color:#fff;font-family:var(--font);font-size:14px;font-weight:700;text-decoration:none;display:none;">Join Now</a>
+      </div>
+    </div>
   </div>
+  <!-- Tabs -->
+  <div style="display:flex;gap:8px;margin-bottom:14px;padding:0 2px;">
+    <button class="etb-f active" onclick="zoomTab('meetings',this)">Upcoming</button>
+    <button class="etb-f" onclick="zoomTab('past',this)">Past Meetings</button>
+    <button class="etb-f" onclick="zoomTab('recordings',this)">Recordings</button>
+    <button class="etb-f" onclick="zoomTab('transcripts',this)">AI Transcripts</button>
+  </div>
+  <!-- Meeting detail panel (slides in on click) -->
+  <div id="zoom-detail" style="display:none;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px;">
+      <div>
+        <div id="zd-topic" style="font-size:16px;font-weight:700;"></div>
+        <div id="zd-meta" style="font-size:12px;color:var(--text-dim);margin-top:4px;"></div>
+      </div>
+      <button onclick="document.getElementById('zoom-detail').style.display='none'" style="background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+      <div style="background:var(--bg);padding:10px;border-radius:8px;text-align:center;">
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);">DURATION</div>
+        <div id="zd-dur" style="font-size:18px;font-weight:700;color:var(--accent);"></div>
+      </div>
+      <div style="background:var(--bg);padding:10px;border-radius:8px;text-align:center;">
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);">MEETING ID</div>
+        <div id="zd-id" style="font-size:14px;font-weight:600;font-family:var(--mono);color:var(--text-dim);"></div>
+      </div>
+      <div style="background:var(--bg);padding:10px;border-radius:8px;text-align:center;">
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);">RECORDING</div>
+        <div id="zd-rec" style="font-size:14px;font-weight:600;color:var(--green);">Cloud Auto</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a id="zd-join" href="#" target="_blank" style="padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#2d8cff,#0b5cff);color:#fff;font-family:var(--font);font-size:12px;font-weight:600;text-decoration:none;">Join Meeting</a>
+      <button id="zd-copy" onclick="copyMeetingLink()" style="padding:8px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">📋 Copy Link</button>
+      <button id="zd-prep" onclick="prepForMeeting()" style="padding:8px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(124,58,237,0.2),rgba(74,124,255,0.2));border:1px solid rgba(124,58,237,0.3);color:var(--text);font-family:var(--font);font-size:12px;cursor:pointer;">🧠 Pre-Meeting Brief</button>
+      <button onclick="deleteMeeting()" style="padding:8px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--red);font-family:var(--font);font-size:12px;cursor:pointer;">Delete</button>
+    </div>
+    <div id="zd-brief" style="display:none;margin-top:12px;padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);"></div>
+  </div>
+  <!-- Content sections -->
   <div id="zoom-meetings" class="card" style="padding:0;overflow:hidden;">
-    <div id="zlist" style="max-height:calc(100vh - 280px);overflow-y:auto;"><div class="eld">Loading Zoom meetings...</div></div>
+    <div id="zlist" style="max-height:calc(100vh - 380px);overflow-y:auto;"><div class="eld">Loading Zoom meetings...</div></div>
+  </div>
+  <div id="zoom-past" class="card" style="padding:0;overflow:hidden;display:none;">
+    <div id="zpast-list" style="max-height:calc(100vh - 380px);overflow-y:auto;"><div class="eld">Loading past meetings...</div></div>
   </div>
   <div id="zoom-recordings" class="card" style="padding:0;overflow:hidden;display:none;">
-    <div id="zreclist" style="max-height:calc(100vh - 280px);overflow-y:auto;"><div class="eld">Loading recordings...</div></div>
+    <div id="zreclist" style="max-height:calc(100vh - 380px);overflow-y:auto;"><div class="eld">Loading recordings...</div></div>
   </div>
   <div id="zoom-transcripts" class="card" style="padding:0;overflow:hidden;display:none;">
-    <div id="ztranscripts" style="max-height:calc(100vh - 280px);overflow-y:auto;"><div class="eld">No processed transcripts yet. Click "Process Transcript" on any recording.</div></div>
+    <div id="ztranscripts" style="max-height:calc(100vh - 380px);overflow-y:auto;"><div class="eld">No processed transcripts yet. Click "Process Transcript" on any recording.</div></div>
   </div>
   <!-- Create Zoom Meeting Modal -->
   <div id="zoom-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
@@ -2178,10 +2230,16 @@ function zoomTab(tab,el){
   document.querySelectorAll('#p-zoom .etb-f').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('zoom-meetings').style.display=tab==='meetings'?'block':'none';
+  document.getElementById('zoom-past').style.display=tab==='past'?'block':'none';
   document.getElementById('zoom-recordings').style.display=tab==='recordings'?'block':'none';
   document.getElementById('zoom-transcripts').style.display=tab==='transcripts'?'block':'none';
   if(tab==='recordings'&&!document.getElementById('zreclist').dataset.loaded)loadZoomRecordings();
+  if(tab==='past')renderPastMeetings();
 }
+
+let allZoomMeetings=[];
+let selectedMeeting=null;
+let zoomCountdownInterval=null;
 
 async function loadZoom(){
   zoomLoaded=true;
@@ -2196,32 +2254,207 @@ async function loadZoomMeetings(){
     const r=await fetch('/api/zoom/meetings');
     const d=await r.json();
     if(d.error){el.innerHTML='<div class="eld">'+esc(d.error)+'</div>';return;}
-    const meetings=d.meetings||[];
-    if(!meetings.length){el.innerHTML='<div class="eld">No upcoming meetings.</div>';return;}
-    let html='';
-    meetings.forEach(m=>{
-      const dt=m.start_time?new Date(m.start_time):null;
-      const dateStr=dt?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'}):'TBD';
-      const timeStr=dt?dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
-      const durMin=m.duration||0;
-      html+=`<div class="ti" style="cursor:default;">
-        <div class="ti-priority normal"></div>
-        <div style="font-size:18px;width:28px;text-align:center;flex-shrink:0;">🎥</div>
-        <div class="ti-body">
-          <div class="ti-title">${esc(m.topic||'Zoom Meeting')}</div>
-          <div class="ti-meta"><span>${dateStr} ${timeStr}</span><span>${durMin} min</span><span>ID: ${m.id}</span></div>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          ${m.join_url?`<a href="${esc(m.join_url)}" target="_blank" style="padding:4px 10px;border-radius:5px;background:var(--accent-glow);border:1px solid var(--accent);color:var(--accent);font-size:11px;text-decoration:none;font-family:var(--font);">Join</a>`:''}
-        </div>
-      </div>`;
-    });
-    el.innerHTML=html;
-    // Update sidebar badge
-    const upcoming=meetings.filter(m=>{const dt=new Date(m.start_time||0);return dt>new Date();}).length;
+    allZoomMeetings=d.meetings||[];
+    const now=new Date();
+    const upcoming=allZoomMeetings.filter(m=>{const dt=new Date(m.start_time||0);return dt>new Date(now.getTime()-60*60000);});
+    const past=allZoomMeetings.filter(m=>{const dt=new Date(m.start_time||0);return dt<=new Date(now.getTime()-60*60000);});
+
+    // Render upcoming (sorted soonest first)
+    upcoming.sort((a,b)=>new Date(a.start_time||0).getTime()-new Date(b.start_time||0).getTime());
+    if(!upcoming.length){el.innerHTML='<div class="eld">No upcoming meetings. Click "Schedule" or "⚡ Instant" to create one.</div>';}
+    else{
+      let html='';
+      upcoming.forEach(m=>{
+        const dt=m.start_time?new Date(m.start_time):null;
+        const timeLabel=dt?getTimeLabel(dt):'TBD';
+        const dateStr=dt?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'}):'';
+        const timeStr=dt?dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
+        const isLive=dt&&Math.abs(now-dt)<m.duration*60000&&now>=dt;
+        const isSoon=dt&&(dt-now)>0&&(dt-now)<30*60000;
+        const borderColor=isLive?'var(--green)':isSoon?'var(--amber)':'var(--border)';
+        const liveTag=isLive?'<span style="font-size:9px;padding:2px 6px;border-radius:10px;background:rgba(52,211,153,0.15);color:var(--green);font-family:var(--mono);animation:pulse 2s infinite;">● LIVE NOW</span>':'';
+        const soonTag=isSoon&&!isLive?'<span style="font-size:9px;padding:2px 6px;border-radius:10px;background:rgba(251,191,36,0.15);color:var(--amber);font-family:var(--mono);">Starting soon</span>':'';
+        html+=`<div class="ti" onclick="openMeetingDetail('${m.id}')" style="cursor:pointer;border-left:3px solid ${borderColor};">
+          <div style="font-size:20px;width:32px;text-align:center;flex-shrink:0;">${isLive?'🟢':'🎥'}</div>
+          <div class="ti-body">
+            <div class="ti-title">${esc(m.topic||'Zoom Meeting')} ${liveTag}${soonTag}</div>
+            <div class="ti-meta"><span>${dateStr}</span><span>${timeStr}</span><span>${m.duration||0} min</span><span style="color:var(--text-muted);">${timeLabel}</span></div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            ${m.join_url?`<a href="${esc(m.join_url)}" target="_blank" onclick="event.stopPropagation()" style="padding:6px 14px;border-radius:6px;background:${isLive?'linear-gradient(135deg,#2d8cff,#0b5cff)':'var(--accent-glow)'};border:1px solid ${isLive?'transparent':'var(--accent)'};color:${isLive?'#fff':'var(--accent)'};font-size:11px;text-decoration:none;font-family:var(--font);font-weight:${isLive?'700':'400'};">${isLive?'JOIN':'Join'}</a>`:''}
+          </div>
+        </div>`;
+      });
+      el.innerHTML=html;
+    }
+
+    // Update hero card with next meeting
+    updateZoomHero(upcoming);
+
+    // Sidebar badge
     const zb=document.getElementById('zbadge');
-    if(zb){if(upcoming>0){zb.textContent=upcoming;zb.style.display='inline';}else{zb.style.display='none';}}
+    if(zb){if(upcoming.length>0){zb.textContent=upcoming.length;zb.style.display='inline';}else{zb.style.display='none';}}
   }catch(e){el.innerHTML='<div class="eld">Error loading Zoom meetings.</div>';}
+}
+
+function renderPastMeetings(){
+  const el=document.getElementById('zpast-list');
+  const now=new Date();
+  const past=allZoomMeetings.filter(m=>{const dt=new Date(m.start_time||0);return dt<=new Date(now.getTime()-60*60000);});
+  past.sort((a,b)=>new Date(b.start_time||0).getTime()-new Date(a.start_time||0).getTime());
+  if(!past.length){el.innerHTML='<div class="eld">No past meetings.</div>';return;}
+  let html='';
+  past.forEach(m=>{
+    const dt=m.start_time?new Date(m.start_time):null;
+    const dateStr=dt?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'}):'';
+    const timeStr=dt?dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
+    html+=`<div class="ti" onclick="openMeetingDetail('${m.id}')" style="cursor:pointer;opacity:0.7;">
+      <div style="font-size:18px;width:28px;text-align:center;flex-shrink:0;">📋</div>
+      <div class="ti-body">
+        <div class="ti-title">${esc(m.topic||'Zoom Meeting')}</div>
+        <div class="ti-meta"><span>${dateStr} ${timeStr}</span><span>${m.duration||0} min</span></div>
+      </div>
+    </div>`;
+  });
+  el.innerHTML=html;
+}
+
+function getTimeLabel(dt){
+  const now=new Date();
+  const diff=dt-now;
+  if(diff<0&&diff>-3600000)return 'Just ended';
+  if(diff<0)return '';
+  if(diff<60000)return 'Starting now!';
+  if(diff<3600000)return 'In '+Math.round(diff/60000)+' min';
+  if(diff<86400000){const hrs=Math.floor(diff/3600000);const mins=Math.round((diff%3600000)/60000);return 'In '+hrs+'h'+(mins>0?' '+mins+'m':'');}
+  if(diff<172800000)return 'Tomorrow';
+  return '';
+}
+
+function updateZoomHero(upcoming){
+  const hero=document.getElementById('zoom-hero');
+  if(!upcoming||!upcoming.length){hero.style.display='none';clearInterval(zoomCountdownInterval);return;}
+  const next=upcoming[0];
+  const dt=new Date(next.start_time);
+  hero.style.display='block';
+  document.getElementById('zh-title').textContent=next.topic||'Zoom Meeting';
+  document.getElementById('zh-time').textContent=dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',timeZone:'America/New_York'})+' at '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+  const joinBtn=document.getElementById('zh-join');
+  if(next.join_url){joinBtn.href=next.join_url;joinBtn.style.display='inline-block';}else{joinBtn.style.display='none';}
+
+  clearInterval(zoomCountdownInterval);
+  function updateCountdown(){
+    const now=new Date();const diff=dt-now;
+    const cd=document.getElementById('zh-countdown');
+    if(diff<=0&&diff>-next.duration*60000){cd.textContent='LIVE';cd.style.color='var(--green)';joinBtn.textContent='Join Now';joinBtn.style.background='linear-gradient(135deg,#22c55e,#16a34a)';}
+    else if(diff<=0){cd.textContent='Ended';cd.style.color='var(--text-muted)';}
+    else if(diff<3600000){const m=Math.floor(diff/60000);const s=Math.floor((diff%60000)/1000);cd.textContent=m+':'+String(s).padStart(2,'0');cd.style.color=diff<300000?'var(--red)':'var(--accent)';}
+    else if(diff<86400000){const h=Math.floor(diff/3600000);const m=Math.floor((diff%3600000)/60000);cd.textContent=h+'h '+m+'m';cd.style.color='var(--accent)';}
+    else{const d=Math.floor(diff/86400000);cd.textContent=d+' day'+(d>1?'s':'');cd.style.color='var(--text-dim)';}
+  }
+  updateCountdown();
+  zoomCountdownInterval=setInterval(updateCountdown,1000);
+}
+
+function joinZoom(url){
+  if(!url)return;
+  // Parse Zoom URL and convert to zoommtg:// protocol for direct app launch
+  try{
+    const u=new URL(url);
+    const meetingId=u.pathname.split('/').pop();
+    const pwd=u.searchParams.get('pwd')||'';
+    const directUrl='zoommtg://zoom.us/join?confno='+meetingId+(pwd?'&pwd='+pwd:'');
+    // Try direct app launch first
+    window.location.href=directUrl;
+    // Fallback: if app doesn't open in 2 seconds, open web URL
+    setTimeout(()=>{window.open(url,'_blank');},2500);
+  }catch(e){
+    // Fallback to regular URL
+    window.open(url,'_blank');
+  }
+}
+
+function openMeetingDetail(id){
+  const m=allZoomMeetings.find(x=>String(x.id)===String(id));
+  if(!m)return;
+  selectedMeeting=m;
+  const panel=document.getElementById('zoom-detail');
+  panel.style.display='block';
+  document.getElementById('zd-topic').textContent=m.topic||'Zoom Meeting';
+  const dt=m.start_time?new Date(m.start_time):null;
+  document.getElementById('zd-meta').textContent=(dt?dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'})+' at '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'Not scheduled');
+  document.getElementById('zd-dur').textContent=(m.duration||0)+' min';
+  document.getElementById('zd-id').textContent=String(m.id);
+  if(m.join_url){
+    const joinBtn=document.getElementById('zd-join');
+    joinBtn.href='#';joinBtn.onclick=function(e){e.preventDefault();joinZoom(m.join_url);};
+    joinBtn.style.display='inline-block';
+  }else{document.getElementById('zd-join').style.display='none';}
+  document.getElementById('zd-brief').style.display='none';
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function copyMeetingLink(){
+  if(!selectedMeeting||!selectedMeeting.join_url)return;
+  navigator.clipboard.writeText(selectedMeeting.join_url);
+  const btn=document.getElementById('zd-copy');
+  btn.textContent='Copied ✓';setTimeout(()=>{btn.textContent='📋 Copy Link';},1500);
+}
+
+async function deleteMeeting(){
+  if(!selectedMeeting)return;
+  if(!confirm('Delete this Zoom meeting?'))return;
+  try{
+    await fetch('/api/zoom/meetings?id='+selectedMeeting.id,{method:'DELETE'});
+    document.getElementById('zoom-detail').style.display='none';
+    selectedMeeting=null;
+    loadZoomMeetings();
+  }catch(e){}
+}
+
+async function prepForMeeting(){
+  if(!selectedMeeting)return;
+  const brief=document.getElementById('zd-brief');
+  brief.style.display='block';
+  brief.innerHTML='<div style="font-size:10px;font-family:var(--mono);color:var(--accent);margin-bottom:8px;">PRE-MEETING BRIEF</div><div style="color:var(--text-muted);font-size:12px;">Loading context from tasks, calendar, and email...</div>';
+  try{
+    // Gather context
+    let ctx='Prepare a pre-meeting brief for: '+selectedMeeting.topic;
+    ctx+='\nScheduled: '+(selectedMeeting.start_time?new Date(selectedMeeting.start_time).toLocaleString():'TBD');
+    ctx+='\nDuration: '+(selectedMeeting.duration||30)+' minutes';
+
+    // Get related tasks
+    try{const tr=await fetch('/api/tasks/');const td=await tr.json();const relTasks=(td.tasks||[]).filter(t=>t.status!=='done'&&t.status!=='archived'&&t.status!=='canceled');if(relTasks.length){ctx+='\n\nACTIVE TASKS ('+relTasks.length+'): '+relTasks.slice(0,8).map(t=>t.title+' ['+t.priority+']').join('; ');}}catch(e){}
+
+    // Get today's other events
+    try{const todayS=new Date();todayS.setHours(0,0,0,0);const todayE=new Date();todayE.setHours(23,59,59,999);const cr=await fetch('/api/m365/calendar?start='+encodeURIComponent(todayS.toISOString())+'&end='+encodeURIComponent(todayE.toISOString()));const cd=await cr.json();const evts=(cd.value||[]);if(evts.length){ctx+='\n\nTODAY\'S SCHEDULE ('+evts.length+' events): '+evts.map(e=>e.subject+' at '+new Date(e.start?.dateTime+'Z').toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})).join('; ');}}catch(e){}
+
+    ctx+='\n\nGenerate a concise pre-meeting brief: talking points, open questions, key context I should have in mind, and any action items to raise. Be specific and direct.';
+
+    const r=await fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude',prompt:ctx})});
+    const d=await r.json();
+    const reply=d.reply||'Could not generate brief.';
+    const formatted=reply.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');
+    brief.innerHTML='<div style="font-size:10px;font-family:var(--mono);color:var(--accent);margin-bottom:8px;">🧠 PRE-MEETING BRIEF — Generated by Claude Opus 4.6</div><div style="font-size:13px;line-height:1.7;color:var(--text-dim);">'+formatted+'</div>';
+  }catch(e){brief.innerHTML='<div style="color:var(--red);font-size:12px;">Error generating brief.</div>';}
+}
+
+async function instantZoomMeeting(){
+  const btn=event.target;
+  btn.disabled=true;btn.textContent='Creating...';
+  try{
+    const r=await fetch('/api/zoom/meetings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      topic:'Instant Meeting — '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}),
+      duration:30,
+      start_time:new Date().toISOString()
+    })});
+    const d=await r.json();
+    if(d.success&&d.meeting?.join_url){
+      btn.textContent='Opening...';
+      window.open(d.meeting.join_url,'_blank');
+      setTimeout(()=>{btn.disabled=false;btn.textContent='⚡ Instant Meeting';loadZoomMeetings();},2000);
+    }else{btn.textContent='Error';setTimeout(()=>{btn.disabled=false;btn.textContent='⚡ Instant Meeting';},2000);}
+  }catch(e){btn.textContent='Failed';setTimeout(()=>{btn.disabled=false;btn.textContent='⚡ Instant Meeting';},2000);}
 }
 
 async function loadZoomRecordings(){
