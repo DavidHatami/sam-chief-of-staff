@@ -788,7 +788,19 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
         <div>
           <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Category</label>
-          <input id="tf-cat" type="text" placeholder="e.g., EduPolicy, Teaching..." style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+          <select id="tf-cat" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+            <option value="">Uncategorized</option>
+            <option value="Personal">Personal</option>
+            <option value="Health/Medical">Health / Medical</option>
+            <option value="Email Follow-up">Email Follow-up</option>
+            <option value="Zoom Follow-up">Zoom Follow-up</option>
+            <option value="EduPolicy">EduPolicy</option>
+            <option value="Teaching">Teaching</option>
+            <option value="Consulting">Consulting</option>
+            <option value="Finance">Finance</option>
+            <option value="Admin">Admin</option>
+            <option value="SAM">SAM</option>
+          </select>
         </div>
         <div>
           <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Due Date</label>
@@ -3068,6 +3080,7 @@ function renderTasks(){
         </select>
       </div>
       <div class="ti-actions">
+        ${isDone?`<button class="ti-btn" onclick="event.stopPropagation();toggleTask('${t.id}')" style="background:var(--amber-dim);color:var(--amber);border-color:var(--amber);">↩ Undo</button>`:`<button class="ti-btn" onclick="event.stopPropagation();toggleTask('${t.id}')" style="background:var(--green-dim);color:var(--green);border-color:var(--green);">✓ Done</button>`}
         <button class="ti-btn" onclick="event.stopPropagation();editTask('${t.id}')">Edit</button>
         <button class="ti-btn del" onclick="event.stopPropagation();deleteTask('${t.id}')">Delete</button>
       </div>
@@ -3088,7 +3101,7 @@ function filterTasks(f,el){
 async function toggleTask(id){
   const t=allTasks.find(x=>x.id===id);
   if(!t)return;
-  const nextStatus=t.status==='done'?'todo':t.status==='in-progress'?'done':'in-progress';
+  const nextStatus=t.status==='done'?'todo':'done';
   try{
     await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:nextStatus})});
     t.status=nextStatus;
@@ -3148,6 +3161,12 @@ function editTask(id){
   document.getElementById('tf-priority').value=t.priority||'normal';
   document.getElementById('tf-status').value=t.status||'todo';
   document.getElementById('tf-cat').value=t.category||'';
+  // If task has a custom category not in the dropdown, add it temporarily
+  const catSel=document.getElementById('tf-cat');
+  if(t.category && catSel.value!==t.category){
+    const opt=document.createElement('option');opt.value=t.category;opt.textContent=t.category;
+    catSel.appendChild(opt);catSel.value=t.category;
+  }
   document.getElementById('tf-due').value=t.dueDate||'';
   document.getElementById('tf-notes').value=t.notes||'';
   // Load sub-tasks
