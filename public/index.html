@@ -741,15 +741,6 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
     <button class="etb-f" onclick="filterTasks('archived',this)">Archived</button>
   </div>
   <!-- Cancelled Bucket Summary -->
-  <div id="cancelled-bucket" style="display:none;margin-bottom:14px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:10px;border-left:4px solid var(--red);">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:18px;">🚫</span>
-        <div><div style="font-size:13px;font-weight:600;">Cancelled Tasks</div><div id="cancelled-count" style="font-size:11px;color:var(--text-muted);font-family:var(--mono);"></div></div>
-      </div>
-      <div style="display:flex;gap:6px;"><button class="etb-f" onclick="filterTasks('canceled',document.querySelector('.etb-f:nth-child(6)'))">View All</button><button onclick="document.getElementById('cancelled-bucket').style.display='none';cancelBucketDismissed=true;" style="background:none;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;padding:3px 8px;border-radius:4px;font-size:12px;">✕</button></div>
-    </div>
-  </div>
   <div class="card" style="padding:0;overflow:hidden;">
     <div id="tlist" style="max-height:calc(100vh - 280px);overflow-y:auto;"><div class="eld">Loading tasks...</div></div>
   </div>
@@ -3275,12 +3266,6 @@ function updateDashboardTasks(){
   const urgent=allTasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='canceled'&&t.status!=='archived').length;
   const tb=document.getElementById('tbadge');
   if(tb){if(urgent>0){tb.textContent=urgent;tb.style.display='inline';}else{tb.style.display='none';}}
-  // Update cancelled bucket
-  const cancelledCount=allTasks.filter(t=>t.status==='canceled').length;
-  const cb=document.getElementById('cancelled-bucket');
-  const cc=document.getElementById('cancelled-count');
-  if(cb){cb.style.display=(cancelledCount>0&&taskFilter==='all'&&!cancelBucketDismissed)?'block':'none';}
-  if(cc){cc.textContent=cancelledCount+' cancelled task'+(cancelledCount!==1?'s':'');}
 }
 
 // Move task modal to body root so it works from all pages (Calendar, Zoom, etc.)
