@@ -63,8 +63,17 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 .ep{font-size:12px;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .et{font-size:11px;color:var(--text-muted);font-family:var(--mono);white-space:nowrap;}
 .eld{text-align:center;padding:40px;color:var(--text-dim);font-size:14px;}
-.ce{padding:14px 16px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;margin-bottom:10px;}
-.ce .ct{font-size:12px;color:var(--accent);font-family:var(--mono);margin-bottom:4px;}.ce .cn{font-size:14px;font-weight:600;}.ce .cl{font-size:12px;color:var(--text-dim);margin-top:2px;}
+.ce{padding:16px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;margin-bottom:10px;cursor:pointer;transition:all 0.15s;min-height:54px;touch-action:manipulation;}
+.ce:hover{background:var(--surface-2);border-left-color:#5d8bff;transform:translateX(2px);}
+.ce:active{transform:scale(0.98);opacity:0.9;}
+.ce .ct{font-size:12px;color:var(--accent);font-family:var(--mono);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;}.ce .cn{font-size:15px;font-weight:600;}.ce .cl{font-size:12px;color:var(--text-dim);margin-top:4px;}
+.ce .ce-chevron{font-size:10px;color:var(--text-muted);transition:transform 0.2s;}
+.ce.open .ce-chevron{transform:rotate(90deg);}
+.ce .ce-details{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text-dim);line-height:1.6;}
+.ce.open .ce-details{display:block;}
+.ce .ce-detail-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;}
+.ce .ce-detail-row span:first-child{flex-shrink:0;width:16px;text-align:center;}
+.ce .ce-action{display:inline-block;margin-top:8px;padding:6px 14px;border-radius:6px;background:var(--accent);color:#fff;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;border:none;font-family:var(--font);}
 .cdh{font-size:15px;font-weight:600;margin:20px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border);}.cdh:first-child{margin-top:0;}
 .ig{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
 .ic{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;}
@@ -227,6 +236,12 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   .page{padding:12px!important;}
   .ei{grid-template-columns:auto 1fr!important;}
   .et{display:none!important;}
+  .ce{padding:18px 16px!important;margin-bottom:12px!important;min-height:60px!important;}
+  .ce .cn{font-size:16px!important;}
+  .ce .ct{font-size:13px!important;}
+  .ce .ce-details{font-size:13px!important;}
+  .ce .ce-action{padding:10px 18px!important;font-size:13px!important;width:100%;text-align:center;}
+  .cdh{font-size:16px!important;margin:24px 0 14px!important;}
 }
 </style>
 </head>
@@ -1811,11 +1826,27 @@ async function loadCal(){
       const ds=s.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',timeZone:'America/New_York'});
       if(ds!==ld){html+=`<div class="cdh">${ds}</div>`;ld=ds;}
       const ts=s.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
-      const rawEnd=e.end?.dateTime||'';
-      const hasTZe=/[Z]|[+-]\d{2}:\d{2}$/.test(rawEnd);const en=hasTZe?new Date(rawEnd):new Date(rawEnd+'Z');
-      const te=en.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+      const rawEnd=e.end?.dateTime||e.end?.date||'';
+      const hasTZe=rawEnd&&/[Z]|[+-]\d{2}:\d{2}$/.test(rawEnd);
+      const en=rawEnd?(hasTZe?new Date(rawEnd):new Date(rawEnd+'Z')):null;
+      const te=(en&&!isNaN(en.getTime()))?en.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
+      const timeDisplay=te?`${ts} \u2014 ${te}`:ts;
       const srcBadge=e._src==='Google'?'<span style="font-size:9px;color:var(--green);font-family:var(--mono);margin-left:8px;">GOOGLE</span>':'';
-      html+=`<div class="ce"><div class="ct">${ts} — ${te}${srcBadge}</div><div class="cn">${esc(e.subject||'(no title)')}</div>${e.location?.displayName?'<div class="cl">'+esc(e.location.displayName)+'</div>':''}</div>`;
+      const loc=e.location?.displayName||e.location||'';
+      const isZoom=loc.toLowerCase().includes('zoom')||(e.subject||'').toLowerCase().includes('zoom')||e.isOnlineMeeting;
+      const organizer=e.organizer?.emailAddress?.name||e.organizer?.email||'';
+      const durMin=(en&&!isNaN(en.getTime()))?Math.round((en.getTime()-s.getTime())/60000):0;
+      html+=`<div class="ce" onclick="this.classList.toggle('open')">
+        <div class="ct"><span>${timeDisplay}${srcBadge}</span><span class="ce-chevron">\u25B6</span></div>
+        <div class="cn">${isZoom?'\uD83C\uDFA5 ':'\uD83D\uDCC5 '}${esc(e.subject||'(no title)')}</div>
+        ${loc?'<div class="cl">\uD83D\uDCCD '+esc(typeof loc==='string'?loc:loc.displayName||'')+'</div>':''}
+        <div class="ce-details">
+          ${durMin>0?'<div class="ce-detail-row"><span>\u23F1</span><span>'+durMin+' minutes</span></div>':''}
+          ${organizer?'<div class="ce-detail-row"><span>\uD83D\uDC64</span><span>'+esc(organizer)+'</span></div>':''}
+          <div class="ce-detail-row"><span>\uD83D\uDCC2</span><span>${e._src} Calendar</span></div>
+          ${isZoom?'<button class="ce-action" onclick="event.stopPropagation();window.open(\'https://zoom.us\',\'_blank\')">\uD83C\uDFA5 Join Zoom</button>':''}
+        </div>
+      </div>`;
     });
     el.innerHTML=html;
     // Count today's events for dashboard
@@ -2975,8 +3006,8 @@ async function loadTasks(){
 function renderTasks(){
   const list=document.getElementById('tlist');
   let tasks=allTasks;
-  if(taskFilter==='urgent') tasks=tasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='archived');
-  else if(taskFilter==='all') tasks=tasks.filter(t=>t.status!=='archived');
+  if(taskFilter==='urgent') tasks=tasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='archived'&&t.status!=='canceled');
+  else if(taskFilter==='all') tasks=tasks.filter(t=>t.status!=='archived'&&t.status!=='canceled');
   else if(taskFilter==='archived') tasks=tasks.filter(t=>t.status==='archived');
   else tasks=tasks.filter(t=>t.status===taskFilter);
 
@@ -3047,9 +3078,11 @@ function renderTasks(){
 
 function filterTasks(f,el){
   taskFilter=f;
+  cancelBucketDismissed=false;
   document.querySelectorAll('.etb-f').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   renderTasks();
+  updateDashboardTasks();
 }
 
 async function toggleTask(id){
