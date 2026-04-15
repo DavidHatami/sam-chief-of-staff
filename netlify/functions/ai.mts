@@ -179,7 +179,7 @@ export default async (req: Request, context: Context) => {
         promise: fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-opus-4-6-20250219", max_tokens: 2048, system: SYSTEM_PROMPT, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-opus-4-6-20250219", max_tokens: 1024, system: SYSTEM_PROMPT, messages: [{ role: "user", content: prompt }] }),
         }),
       });
 
@@ -190,7 +190,7 @@ export default async (req: Request, context: Context) => {
           promise: fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${OPENAI_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: "gpt-5.4", messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: prompt }], max_completion_tokens: 2048 }),
+            body: JSON.stringify({ model: "gpt-5.4", messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: prompt }], max_completion_tokens: 1024 }),
           }),
         });
       }
@@ -198,11 +198,11 @@ export default async (req: Request, context: Context) => {
       // Gemini
       if (GEMINI_KEY) {
         calls.push({
-          name: "Gemini 2.5 Pro",
+          name: "Gemini 2.5 Flash",
           promise: fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ system_instruction: { parts: [{ text: SYSTEM_PROMPT }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 2048, temperature: 0.7 } }),
+            body: JSON.stringify({ system_instruction: { parts: [{ text: SYSTEM_PROMPT }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 1024, temperature: 0.7 } }),
           }),
         });
       }
