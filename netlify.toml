@@ -5,6 +5,9 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+[functions."ai"]
+  external_node_modules = ["node-fetch"]
+
 [[headers]]
   for = "/*"
   [headers.values]

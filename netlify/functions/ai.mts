@@ -235,40 +235,64 @@ export default async (req: Request, context: Context) => {
       }
 
       // Now synthesize with Claude Opus — the strongest brain adjudicates
-      const synthesisPrompt = `You are SAM's Council Synthesizer. Three AI models were asked the same question. Your job:
+      const okResponses = responses.filter(r => r.status === "ok" && r.reply.length > 5);
 
-1. Read all responses below
-2. Identify the strongest insights, most accurate facts, and best reasoning from EACH model
-3. Resolve any contradictions (note when models disagree and explain who's right and why)
-4. Produce ONE superior answer that combines the best of all three — better than any single response alone
-5. At the end, add a brief "[Council Notes]" section noting which model contributed the strongest elements and any notable disagreements
+      // If only one model responded successfully, just return that
+      if (okResponses.length <= 1) {
+        const best = okResponses[0] || responses[0];
+        return new Response(JSON.stringify({
+          reply: best.reply + "\n\n[Council: Only " + best.model + " responded successfully. Other models failed.]",
+          model: "council",
+          individual: responses,
+          modelsUsed: responses.filter(r => r.status === "ok").map(r => r.model),
+        }), { headers: { "Content-Type": "application/json" } });
+      }
 
-ORIGINAL QUESTION: ${prompt}
+      // Truncate individual responses to keep synthesis prompt short
+      const truncated = okResponses.map(r => ({
+        ...r,
+        reply: r.reply.length > 800 ? r.reply.substring(0, 800) + "..." : r.reply,
+      }));
 
-${responses.map(r => `── ${r.model} ${r.status === 'error' ? '(ERROR)' : ''} ──\n${r.reply}`).join("\n\n")}
+      const synthesisPrompt = `Three AI models answered this question. Synthesize the best composite answer — pull strongest insights from each, resolve contradictions, note who contributed what.
 
-Now synthesize the best possible answer:`;
+QUESTION: ${prompt}
 
-      const synthResp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-opus-4-6-20250219",
-          max_tokens: 4096,
-          system: "You are SAM's Council Synthesizer. You combine multiple AI perspectives into one superior answer. Be thorough but not redundant. Credit specific models when they contribute unique insights.",
-          messages: [{ role: "user", content: synthesisPrompt }],
-        }),
-      });
+${truncated.map(r => `── ${r.model} ──\n${r.reply}`).join("\n\n")}
 
-      const synthData = await synthResp.json();
-      const synthesized = synthData.content?.map((b: any) => b.type === "text" ? b.text : "").join("") || "Synthesis failed.";
+Synthesize now (be concise, no preamble):`;
 
-      return new Response(JSON.stringify({
-        reply: synthesized,
-        model: "council",
-        individual: responses,
-        modelsUsed: responses.filter(r => r.status === "ok").map(r => r.model),
-      }), { headers: { "Content-Type": "application/json" } });
+      try {
+        const synthResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-opus-4-6-20250219",
+            max_tokens: 2048,
+            system: "You are SAM's Council Synthesizer. Combine multiple AI perspectives into one superior answer. Be direct and concise. Credit models by name when they contribute unique insights. End with a brief [Council Notes] line.",
+            messages: [{ role: "user", content: synthesisPrompt }],
+          }),
+        });
+
+        const synthData = await synthResp.json();
+        const synthesized = synthData.content?.map((b: any) => b.type === "text" ? b.text : "").join("") || "Synthesis error: " + JSON.stringify(synthData.error || synthData).substring(0, 200);
+
+        return new Response(JSON.stringify({
+          reply: synthesized,
+          model: "council",
+          individual: responses,
+          modelsUsed: responses.filter(r => r.status === "ok").map(r => r.model),
+        }), { headers: { "Content-Type": "application/json" } });
+      } catch (synthErr) {
+        // Synthesis failed — return the best individual response instead
+        const best = okResponses[0];
+        return new Response(JSON.stringify({
+          reply: best.reply + "\n\n[Council: Synthesis step timed out. Showing " + best.model + "'s response. Other models responded but couldn't be merged in time.]",
+          model: "council",
+          individual: responses,
+          modelsUsed: responses.filter(r => r.status === "ok").map(r => r.model),
+        }), { headers: { "Content-Type": "application/json" } });
+      }
     }
 
     // ── PERPLEXITY — future slot ──
