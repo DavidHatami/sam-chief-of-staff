@@ -813,7 +813,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   </div>
   <div style="margin-top:24px;">
     <div class="hdr"><h1>Data Storage</h1></div>
-    <div class="ig" style="grid-template-columns:repeat(2,1fr);">
+    <div class="ig" style="grid-template-columns:repeat(3,1fr);">
       <div class="ic" style="cursor:pointer;" onclick="go('tasks',document.querySelectorAll('.ni')[3]);setTimeout(()=>{const ab=document.querySelector('.etb-f:last-child');if(ab)filterTasks('archived',ab);},200);">
         <div class="ii">📦</div><h4>Archived Tasks</h4><p>Tasks marked as archived are stored permanently in Netlify Blobs. Click to view your archive.</p>
         <div id="archive-count" style="font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--mono);"></div>
@@ -823,6 +823,13 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
         <div class="ii">💾</div><h4>Task Database</h4><p>All tasks (active, done, archived) stored in Netlify Blobs with strong consistency. Data persists across deploys and sessions.</p>
         <div id="total-task-count" style="font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--mono);"></div>
         <div class="is" style="background:var(--green-dim);color:var(--green);">● NETLIFY BLOBS</div>
+      </div>
+      <div class="ic">
+        <div class="ii">🔒</div><h4>Nightly Backup</h4>
+        <p>All data backed up to sam-ops GitHub repo at 3:00 AM ET daily. Git history = time machine.</p>
+        <div id="backup-status" style="font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--mono);"></div>
+        <button onclick="runBackupNow()" id="backup-now-btn" style="margin-top:8px;padding:6px 14px;border-radius:6px;background:linear-gradient(135deg,rgba(74,124,255,0.15),rgba(124,58,237,0.15));border:1px solid rgba(74,124,255,0.3);color:var(--accent);font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">🔒 Backup Now</button>
+        <div class="is" style="background:var(--green-dim);color:var(--green);">● SCHEDULED 3AM ET</div>
       </div>
     </div>
   </div>
@@ -894,11 +901,41 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='integrations'&&!instLoaded)loadInstructions();}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 function tick(){const n=new Date(),h=n.getHours(),g=h<12?'Morning':h<17?'Afternoon':'Evening';document.getElementById('greeting').textContent='Good '+g+', Dr. Hatami';document.getElementById('clock').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/New_York'});document.getElementById('datestr').textContent=n.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});}
 setInterval(tick,1000);tick();
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// ── SAM BACKUP ──
+async function runBackupNow(){
+  const btn=document.getElementById('backup-now-btn');
+  btn.disabled=true;btn.textContent='Backing up...';
+  try{
+    const r=await fetch('/api/backup',{method:'POST'});
+    const d=await r.json();
+    if(d.success){
+      btn.textContent='✓ Backed up!';btn.style.color='var(--green)';
+      document.getElementById('backup-status').textContent='Last: '+new Date().toLocaleString()+' · '+d.sizeKB+'KB · commit '+d.commit;
+      setTimeout(()=>{btn.textContent='🔒 Backup Now';btn.style.color='';btn.disabled=false;},3000);
+    }else{
+      btn.textContent='Failed: '+(d.error||'').substring(0,30);btn.style.color='var(--red)';
+      setTimeout(()=>{btn.textContent='🔒 Backup Now';btn.style.color='';btn.disabled=false;},3000);
+    }
+  }catch(e){
+    btn.textContent='Error';btn.style.color='var(--red)';
+    setTimeout(()=>{btn.textContent='🔒 Backup Now';btn.style.color='';btn.disabled=false;},3000);
+  }
+}
+async function checkBackupStatus(){
+  try{
+    const r=await fetch('/api/backup');const d=await r.json();
+    if(d.lastBackup){
+      const lb=d.lastBackup;
+      document.getElementById('backup-status').textContent='Last: '+new Date(lb.timestamp).toLocaleDateString()+' · '+lb.sizeKB+'KB · '+lb.stores+' stores · '+lb.elapsed;
+    }
+  }catch(e){}
+}
 
 // ── SAM INSTRUCTIONS — PERMANENT MEMORY ──
 let allInstructions=[];
