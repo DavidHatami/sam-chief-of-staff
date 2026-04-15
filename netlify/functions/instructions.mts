@@ -154,6 +154,124 @@ export default async (req: Request, context: Context) => {
       return new Response(JSON.stringify({ success: true, instruction: all[idx] }), { headers });
     }
 
+    // ── COMPRESS SINGLE INSTRUCTION (via Gemini Flash — free) ──
+    if (path === "compress" && req.method === "POST") {
+      const body = await req.json();
+      const { content, instructionId } = body;
+      const textToCompress = content || "";
+
+      if (!textToCompress || textToCompress.length < 30) {
+        return new Response(JSON.stringify({ error: "Content too short to compress" }), { status: 400, headers });
+      }
+
+      const GEMINI_KEY = Netlify.env.get("GEMINI_API_KEY");
+      if (!GEMINI_KEY) {
+        return new Response(JSON.stringify({ error: "Gemini API key needed for compression (it's free). Add GEMINI_API_KEY." }), { status: 500, headers });
+      }
+
+      const compressPrompt = `You are a prompt compression engine. Compress the following instruction text to the MINIMUM number of characters while preserving 100% of the meaning, specificity, names, numbers, rules, and intent. Use telegraphic style — remove all filler words, articles, pleasantries, and conversational padding. Keep proper nouns, exact numbers, specific rules, and technical terms intact. Do NOT summarize or generalize — compress.
+
+Original (${textToCompress.length} chars):
+${textToCompress}
+
+Compressed version (aim for 40-60% reduction):`;
+
+      try {
+        const gResp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: compressPrompt }] }],
+              generationConfig: { maxOutputTokens: 1024, temperature: 0.2 },
+            }),
+          }
+        );
+
+        if (!gResp.ok) {
+          const errText = await gResp.text();
+          return new Response(JSON.stringify({ error: "Gemini error: " + errText.substring(0, 200) }), { status: 500, headers });
+        }
+
+        const gData = await gResp.json();
+        const compressed = gData.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("").trim() || "";
+
+        if (!compressed) {
+          return new Response(JSON.stringify({ error: "Gemini returned empty response" }), { status: 500, headers });
+        }
+
+        const savings = Math.round((1 - compressed.length / textToCompress.length) * 100);
+
+        return new Response(JSON.stringify({
+          success: true,
+          original: textToCompress,
+          compressed,
+          originalChars: textToCompress.length,
+          compressedChars: compressed.length,
+          savings: savings + "%",
+          originalTokens: Math.ceil(textToCompress.length / 4),
+          compressedTokens: Math.ceil(compressed.length / 4),
+          instructionId: instructionId || null,
+        }), { headers });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: "Compression failed: " + String(e) }), { status: 500, headers });
+      }
+    }
+
+    // ── COMPRESS ALL ENABLED INSTRUCTIONS ──
+    if (path === "compress-all" && req.method === "POST") {
+      const GEMINI_KEY = Netlify.env.get("GEMINI_API_KEY");
+      if (!GEMINI_KEY) {
+        return new Response(JSON.stringify({ error: "Gemini API key needed" }), { status: 500, headers });
+      }
+
+      const all = await loadAll();
+      const enabled = all.filter(i => i.enabled && i.content.length > 50);
+      const results: Array<{ id: string; title: string; originalChars: number; compressedChars: number; savings: string }> = [];
+
+      for (const inst of enabled) {
+        try {
+          const gResp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: `Compress this instruction to minimum characters while preserving 100% of meaning, names, numbers, rules. Telegraphic style. No filler. Keep specifics.\n\nOriginal:\n${inst.content}\n\nCompressed:` }] }],
+                generationConfig: { maxOutputTokens: 512, temperature: 0.2 },
+              }),
+            }
+          );
+          if (gResp.ok) {
+            const gData = await gResp.json();
+            const compressed = gData.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("").trim() || "";
+            if (compressed && compressed.length < inst.content.length) {
+              const origLen = inst.content.length;
+              inst.content = compressed;
+              inst.updated = new Date().toISOString();
+              const savings = Math.round((1 - compressed.length / origLen) * 100);
+              results.push({ id: inst.id, title: inst.title, originalChars: origLen, compressedChars: compressed.length, savings: savings + "%" });
+            }
+          }
+        } catch (e) { /* skip failed ones */ }
+      }
+
+      await saveAll(all);
+      const totalOriginal = results.reduce((s, r) => s + r.originalChars, 0);
+      const totalCompressed = results.reduce((s, r) => s + r.compressedChars, 0);
+
+      return new Response(JSON.stringify({
+        success: true,
+        compressed: results.length,
+        skipped: enabled.length - results.length,
+        totalOriginalChars: totalOriginal,
+        totalCompressedChars: totalCompressed,
+        totalSavings: totalOriginal > 0 ? Math.round((1 - totalCompressed / totalOriginal) * 100) + "%" : "0%",
+        details: results,
+      }), { headers });
+    }
+
     // ── DELETE INSTRUCTION ──
     if (path && req.method === "DELETE") {
       const id = path;
