@@ -3091,7 +3091,6 @@ function renderTasks(){
 
 function filterTasks(f,el){
   taskFilter=f;
-  cancelBucketDismissed=false;
   document.querySelectorAll('.etb-f').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   renderTasks();
