@@ -160,6 +160,117 @@ export default async (req: Request, context: Context) => {
       });
     }
 
+    // ── COUNCIL MODE — All 3 brains, synthesized by Opus ──
+    if (model === "council") {
+      const ANTHROPIC_KEY = Netlify.env.get("ANTHROPIC_API_KEY");
+      const OPENAI_KEY = Netlify.env.get("OPENAI_API_KEY");
+      const GEMINI_KEY = Netlify.env.get("GEMINI_API_KEY");
+
+      if (!ANTHROPIC_KEY) {
+        return new Response(JSON.stringify({ error: "Council requires Anthropic API key." }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Fire all available models simultaneously
+      const calls: Array<{ name: string; promise: Promise<Response> }> = [];
+
+      // Claude
+      calls.push({
+        name: "Claude Opus 4.6",
+        promise: fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-opus-4-6-20250219", max_tokens: 2048, system: SYSTEM_PROMPT, messages: [{ role: "user", content: prompt }] }),
+        }),
+      });
+
+      // OpenAI
+      if (OPENAI_KEY) {
+        calls.push({
+          name: "GPT-5.4",
+          promise: fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${OPENAI_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "gpt-5.4", messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: prompt }], max_completion_tokens: 2048 }),
+          }),
+        });
+      }
+
+      // Gemini
+      if (GEMINI_KEY) {
+        calls.push({
+          name: "Gemini 2.5 Pro",
+          promise: fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ system_instruction: { parts: [{ text: SYSTEM_PROMPT }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 2048, temperature: 0.7 } }),
+          }),
+        });
+      }
+
+      // Wait for all to complete
+      const results = await Promise.allSettled(calls.map(c => c.promise));
+      const responses: Array<{ model: string; reply: string; status: string }> = [];
+
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        const name = calls[i].name;
+        if (r.status === "fulfilled") {
+          try {
+            const data = await r.value.json();
+            let text = "";
+            if (name.includes("Claude")) {
+              text = data.content?.map((b: any) => b.type === "text" ? b.text : "").join("") || data.error?.message || "";
+            } else if (name.includes("GPT")) {
+              text = data.choices?.[0]?.message?.content || data.error?.message || "";
+            } else if (name.includes("Gemini")) {
+              text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || data.error?.message || "";
+            }
+            responses.push({ model: name, reply: text || "(empty response)", status: "ok" });
+          } catch (e) {
+            responses.push({ model: name, reply: String(e), status: "error" });
+          }
+        } else {
+          responses.push({ model: name, reply: String(r.reason), status: "error" });
+        }
+      }
+
+      // Now synthesize with Claude Opus — the strongest brain adjudicates
+      const synthesisPrompt = `You are SAM's Council Synthesizer. Three AI models were asked the same question. Your job:
+
+1. Read all responses below
+2. Identify the strongest insights, most accurate facts, and best reasoning from EACH model
+3. Resolve any contradictions (note when models disagree and explain who's right and why)
+4. Produce ONE superior answer that combines the best of all three — better than any single response alone
+5. At the end, add a brief "[Council Notes]" section noting which model contributed the strongest elements and any notable disagreements
+
+ORIGINAL QUESTION: ${prompt}
+
+${responses.map(r => `── ${r.model} ${r.status === 'error' ? '(ERROR)' : ''} ──\n${r.reply}`).join("\n\n")}
+
+Now synthesize the best possible answer:`;
+
+      const synthResp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-opus-4-6-20250219",
+          max_tokens: 4096,
+          system: "You are SAM's Council Synthesizer. You combine multiple AI perspectives into one superior answer. Be thorough but not redundant. Credit specific models when they contribute unique insights.",
+          messages: [{ role: "user", content: synthesisPrompt }],
+        }),
+      });
+
+      const synthData = await synthResp.json();
+      const synthesized = synthData.content?.map((b: any) => b.type === "text" ? b.text : "").join("") || "Synthesis failed.";
+
+      return new Response(JSON.stringify({
+        reply: synthesized,
+        model: "council",
+        individual: responses,
+        modelsUsed: responses.filter(r => r.status === "ok").map(r => r.model),
+      }), { headers: { "Content-Type": "application/json" } });
+    }
+
     // ── PERPLEXITY — future slot ──
     if (model === "perplexity") {
       const PPLX_KEY = Netlify.env.get("PERPLEXITY_API_KEY");

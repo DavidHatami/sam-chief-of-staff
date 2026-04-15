@@ -517,11 +517,12 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
     <div class="ai-mod active" onclick="setModel('claude',this)" id="mod-claude"><span class="mod-dot" style="background:#c084fc;"></span>Claude (Anthropic)</div>
     <div class="ai-mod" onclick="setModel('openai',this)" id="mod-openai"><span class="mod-dot" style="background:#34d399;"></span>GPT (OpenAI)</div>
     <div class="ai-mod" onclick="setModel('gemini',this)" id="mod-gemini"><span class="mod-dot" style="background:var(--amber);"></span>Gemini (Google)</div>
+    <div class="ai-mod" onclick="setModel('council',this)" id="mod-council" style="background:linear-gradient(135deg,rgba(124,58,237,0.15),rgba(74,124,255,0.15),rgba(251,191,36,0.15));border:1px solid rgba(124,58,237,0.3);"><span class="mod-dot" style="background:linear-gradient(135deg,#c084fc,#34d399,var(--amber));"></span>⚡ Council</div>
     <div class="ai-mod" onclick="setModel('perplexity',this)" id="mod-perplexity" style="opacity:0.5;cursor:default;"><span class="mod-dot" style="background:var(--accent);"></span>Perplexity <span style="font-size:9px;color:var(--text-muted);margin-left:4px;">SLOT</span></div>
   </div>
   <div class="ai-chat">
     <div class="ai-msgs" id="ai-msgs">
-      <div class="ai-msg bot"><div class="av">S</div><div class="bubble">AI Workbench ready. Select a model above and ask anything. Claude (Anthropic) and GPT (OpenAI) are live. Gemini and Perplexity slots are reserved — drop in API keys when you're ready.</div></div>
+      <div class="ai-msg bot"><div class="av">S</div><div class="bubble">AI Workbench ready. 3 engines live: Claude Opus 4.6, GPT-5.4, Gemini 2.5 Pro. <strong>⚡ Council mode</strong> fires all 3 simultaneously and synthesizes the best answer from each.</div></div>
     </div>
     <div class="ai-input">
       <textarea id="ai-prompt" placeholder="Ask anything... research, compare, analyze, draft..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI();}"></textarea>
@@ -1582,9 +1583,9 @@ function setModel(m,el){
   document.querySelectorAll('.ai-mod').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   const msgs=document.getElementById('ai-msgs');
-  const labels={'claude':'Claude Opus 4.6 (Anthropic)','openai':'GPT-5.4 (OpenAI)','gemini':'Gemini 2.5 Pro (Google)'};
+  const labels={'claude':'Claude Opus 4.6 (Anthropic)','openai':'GPT-5.4 (OpenAI)','gemini':'Gemini 2.5 Pro (Google)','council':'⚡ Council Mode — All 3 brains, synthesized'};
   const label=labels[m]||m;
-  msgs.innerHTML+=`<div class="ai-msg bot"><div class="av">S</div><div class="bubble">Switched to <strong>${label}</strong>. Ready.</div></div>`;
+  msgs.innerHTML+=`<div class="ai-msg bot"><div class="av">${m==='council'?'⚡':'S'}</div><div class="bubble">${m==='council'?'<strong>Council Mode activated.</strong> Every query fires Claude + GPT + Gemini simultaneously. Opus synthesizes the best answer from all three. Takes longer, costs more tokens, delivers stronger results.':'Switched to <strong>'+label+'</strong>. Ready.'}</div></div>`;
   msgs.scrollTop=msgs.scrollHeight;
 }
 async function sendAI(){
@@ -1596,7 +1597,10 @@ async function sendAI(){
   const btn=document.getElementById('ai-send');
   btn.disabled=true;btn.textContent='...';
   msgs.innerHTML+=`<div class="ai-msg user"><div class="av">DH</div><div class="bubble">${esc(text)}</div></div>`;
-  msgs.innerHTML+=`<div class="ai-msg bot" id="ai-typing"><div class="av">${aiModel==='claude'?'C':aiModel==='gemini'?'G✦':'G'}</div><div class="bubble" style="color:var(--text-muted);">Thinking...</div></div>`;
+  const isCouncil=aiModel==='council';
+  const avLabel=isCouncil?'⚡':aiModel==='claude'?'C':aiModel==='gemini'?'G✦':'G';
+  const thinkMsg=isCouncil?'Consulting all 3 engines simultaneously...':'Thinking...';
+  msgs.innerHTML+=`<div class="ai-msg bot" id="ai-typing"><div class="av">${avLabel}</div><div class="bubble" style="color:var(--text-muted);">${thinkMsg}</div></div>`;
   msgs.scrollTop=msgs.scrollHeight;
   try{
     const r=await fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:aiModel,prompt:text,history:aiHistory.slice(-10)})});
@@ -1607,7 +1611,23 @@ async function sendAI(){
     const typing=document.getElementById('ai-typing');
     if(typing){
       const formatted=reply.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');
-      typing.innerHTML=`<div class="av">${aiModel==='claude'?'C':aiModel==='gemini'?'G✦':'G'}</div><div class="bubble">${formatted}</div>`;
+      let extra='';
+      // Council mode: show individual model responses in collapsible section
+      if(isCouncil&&d.individual&&d.individual.length){
+        const used=(d.modelsUsed||[]).join(' + ');
+        extra+=`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">`;
+        extra+=`<div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;font-family:var(--mono);">COUNCIL: ${used}</div>`;
+        extra+=`<details style="font-size:12px;"><summary style="cursor:pointer;color:var(--accent);font-size:11px;font-family:var(--mono);">View individual model responses ▾</summary>`;
+        d.individual.forEach(function(ind){
+          const indFormatted=ind.reply.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');
+          const statusColor=ind.status==='ok'?'var(--green)':'var(--red)';
+          extra+=`<div style="margin:8px 0;padding:10px;background:var(--bg);border-radius:6px;border-left:3px solid ${statusColor};">`;
+          extra+=`<div style="font-size:10px;font-family:var(--mono);color:${statusColor};margin-bottom:6px;">${ind.model} ${ind.status==='error'?'(ERROR)':''}</div>`;
+          extra+=`<div style="font-size:12px;line-height:1.5;">${indFormatted}</div></div>`;
+        });
+        extra+=`</details></div>`;
+      }
+      typing.innerHTML=`<div class="av">${avLabel}</div><div class="bubble" style="line-height:1.6;">${formatted}${extra}</div>`;
       typing.removeAttribute('id');
     }
   }catch(e){
