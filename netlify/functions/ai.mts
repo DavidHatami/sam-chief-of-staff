@@ -93,7 +93,7 @@ export default async (req: Request, context: Context) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o",
+          model: "gpt-5.4",
           messages,
           max_tokens: 4096,
         }),
