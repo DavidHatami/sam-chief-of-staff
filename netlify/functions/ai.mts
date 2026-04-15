@@ -95,7 +95,7 @@ export default async (req: Request, context: Context) => {
         body: JSON.stringify({
           model: "gpt-5.4",
           messages,
-          max_tokens: 4096,
+          max_completion_tokens: 4096,
         }),
       });
 
