@@ -175,36 +175,63 @@ export default async (req: Request) => {
         continue;
       }
 
-      // 4c. Send to Claude for extraction
-      const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": anthropicKey,
-          "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-opus-4-6-20250219",
-          max_tokens: 2000,
-          system:
-            "You extract action items from meeting transcripts. Return ONLY valid JSON, no markdown fences, no preamble. Format: {\"summary\":\"3 sentence summary\",\"action_items\":[{\"task\":\"specific action\",\"owner\":\"person name or Unknown\",\"deadline\":\"date or ASAP or null\",\"priority\":\"urgent|high|normal|low\"}],\"decisions\":[\"decision made\"],\"follow_ups\":[\"item needing follow up\"]}",
-          messages: [
-            {
-              role: "user",
-              content: `Extract all action items from this Zoom meeting transcript.\n\nMeeting: ${rec.topic || "Unknown Meeting"}\nDate: ${rec.start_time || ""}\nDuration: ${rec.duration || 0} minutes\n\nTranscript (first 6000 chars):\n${plainText.substring(0, 6000)}`,
-            },
-          ],
-        }),
-      });
+      // 4c. Send to AI for extraction — Gemini Flash (free) first, Claude fallback
+      const geminiKey = Netlify.env.get("GEMINI_API_KEY");
+      const extractPrompt = `Extract all action items from this Zoom meeting transcript. Return ONLY valid JSON, no markdown fences, no preamble. Format: {"summary":"3 sentence summary","action_items":[{"task":"specific action","owner":"person name or Unknown","deadline":"date or ASAP or null","priority":"urgent|high|normal|low"}],"decisions":["decision made"],"follow_ups":["item needing follow up"]}\n\nMeeting: ${rec.topic || "Unknown Meeting"}\nDate: ${rec.start_time || ""}\nDuration: ${rec.duration || 0} minutes\n\nTranscript (first 6000 chars):\n${plainText.substring(0, 6000)}`;
 
-      if (!aiResp.ok) {
-        console.log(`[ZOOM-AUTO] Claude API error for ${rec.id}:`, aiResp.status);
-        continue;
+      let aiText = "";
+
+      if (geminiKey) {
+        // Use Gemini Flash — free tier, fast, great for extraction
+        try {
+          const gResp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: "You extract action items from meeting transcripts. Return ONLY valid JSON." }] },
+                contents: [{ role: "user", parts: [{ text: extractPrompt }] }],
+                generationConfig: { maxOutputTokens: 2000, temperature: 0.3 },
+              }),
+            }
+          );
+          if (gResp.ok) {
+            const gData = await gResp.json();
+            aiText = gData.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+            console.log(`[ZOOM-AUTO] Gemini Flash processed ${rec.id} (free)`);
+          }
+        } catch (e) {
+          console.log(`[ZOOM-AUTO] Gemini failed for ${rec.id}, trying Claude`);
+        }
       }
 
-      const aiData = await aiResp.json();
-      const aiText =
-        aiData.content?.[0]?.text || "";
+      // Fallback to Claude if Gemini didn't produce output
+      if (!aiText && anthropicKey) {
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-opus-4-6",
+            max_tokens: 2000,
+            system: "You extract action items from meeting transcripts. Return ONLY valid JSON, no markdown fences, no preamble.",
+            messages: [{ role: "user", content: extractPrompt }],
+          }),
+        });
+        if (aiResp.ok) {
+          const aiData = await aiResp.json();
+          aiText = aiData.content?.[0]?.text || "";
+          console.log(`[ZOOM-AUTO] Claude processed ${rec.id} (fallback)`);
+        } else {
+          console.log(`[ZOOM-AUTO] Claude API error for ${rec.id}:`, aiResp.status);
+          continue;
+        }
+      }
+
+      if (!aiText) {
+        console.log(`[ZOOM-AUTO] No AI response for ${rec.id}, skipping`);
+        continue;
+      }
 
       // 4d. Parse AI response
       let parsed: any;

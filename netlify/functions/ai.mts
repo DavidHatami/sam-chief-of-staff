@@ -46,7 +46,7 @@ export default async (req: Request, context: Context) => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-opus-4-6-20250219",
+          model: "claude-opus-4-6",
           max_tokens: 4096,
           system: SYSTEM_PROMPT,
           messages,
@@ -179,7 +179,7 @@ export default async (req: Request, context: Context) => {
         promise: fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-opus-4-6-20250219", max_tokens: 1024, system: SYSTEM_PROMPT, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-opus-4-6", max_tokens: 1024, system: SYSTEM_PROMPT, messages: [{ role: "user", content: prompt }] }),
         }),
       });
 
@@ -267,7 +267,7 @@ Synthesize now (be concise, no preamble):`;
           method: "POST",
           headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({
-            model: "claude-opus-4-6-20250219",
+            model: "claude-opus-4-6",
             max_tokens: 2048,
             system: "You are SAM's Council Synthesizer. Combine multiple AI perspectives into one superior answer. Be direct and concise. Credit models by name when they contribute unique insights. End with a brief [Council Notes] line.",
             messages: [{ role: "user", content: synthesisPrompt }],
