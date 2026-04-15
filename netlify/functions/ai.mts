@@ -110,20 +110,54 @@ export default async (req: Request, context: Context) => {
       });
     }
 
-    // ── GEMINI (Google) — future slot ──
+    // ── GEMINI (Google) ──
     if (model === "gemini") {
       const GEMINI_KEY = Netlify.env.get("GEMINI_API_KEY");
       if (!GEMINI_KEY) {
         return new Response(
-          JSON.stringify({ error: "Gemini slot is open. Add GEMINI_API_KEY to Netlify env vars to activate." }),
-          { status: 501, headers: { "Content-Type": "application/json" } }
+          JSON.stringify({ error: "Gemini API key not configured. Add GEMINI_API_KEY to Netlify env vars. Get one at aistudio.google.com" }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
         );
       }
-      // TODO: wire Gemini API when key provided
-      return new Response(
-        JSON.stringify({ error: "Gemini integration pending key." }),
-        { status: 501, headers: { "Content-Type": "application/json" } }
+
+      const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+      if (history && Array.isArray(history)) {
+        history.forEach((h: { role: string; content: string }) => {
+          contents.push({
+            role: h.role === "assistant" ? "model" : "user",
+            parts: [{ text: h.content }],
+          });
+        });
+      }
+      contents.push({ role: "user", parts: [{ text: prompt }] });
+
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents,
+            generationConfig: {
+              maxOutputTokens: 4096,
+              temperature: 0.7,
+            },
+          }),
+        }
       );
+
+      const data = await resp.json();
+      const reply =
+        data.candidates?.[0]?.content?.parts
+          ?.map((p: { text?: string }) => p.text || "")
+          .join("") ||
+        data.error?.message ||
+        "No response from Gemini.";
+
+      return new Response(JSON.stringify({ reply, model: "gemini" }), {
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     // ── PERPLEXITY — future slot ──

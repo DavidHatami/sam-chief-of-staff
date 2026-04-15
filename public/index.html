@@ -516,7 +516,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   <div class="ai-models">
     <div class="ai-mod active" onclick="setModel('claude',this)" id="mod-claude"><span class="mod-dot" style="background:#c084fc;"></span>Claude (Anthropic)</div>
     <div class="ai-mod" onclick="setModel('openai',this)" id="mod-openai"><span class="mod-dot" style="background:#34d399;"></span>GPT (OpenAI)</div>
-    <div class="ai-mod" onclick="setModel('gemini',this)" id="mod-gemini" style="opacity:0.5;cursor:default;"><span class="mod-dot" style="background:var(--amber);"></span>Gemini (Google) <span style="font-size:9px;color:var(--text-muted);margin-left:4px;">SLOT</span></div>
+    <div class="ai-mod" onclick="setModel('gemini',this)" id="mod-gemini"><span class="mod-dot" style="background:var(--amber);"></span>Gemini (Google)</div>
     <div class="ai-mod" onclick="setModel('perplexity',this)" id="mod-perplexity" style="opacity:0.5;cursor:default;"><span class="mod-dot" style="background:var(--accent);"></span>Perplexity <span style="font-size:9px;color:var(--text-muted);margin-left:4px;">SLOT</span></div>
   </div>
   <div class="ai-chat">
@@ -532,7 +532,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   <div class="ai-slots">
     <div class="ai-slot"><h4>Anthropic (Claude)</h4><p>claude-opus-4-6-20250219 — via Anthropic API</p><div class="slot-status" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
     <div class="ai-slot"><h4>OpenAI (GPT)</h4><p>gpt-5.4 — via OpenAI API</p><div class="slot-status" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
-    <div class="ai-slot"><h4>Google (Gemini)</h4><p>Reserved slot — add GEMINI_API_KEY to Netlify env vars</p><div class="slot-status" style="background:var(--amber-dim);color:var(--amber);">● SLOT OPEN</div></div>
+    <div class="ai-slot"><h4>Google (Gemini)</h4><p>gemini-2.5-pro — via Google AI Studio API</p><div class="slot-status" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
     <div class="ai-slot"><h4>Perplexity</h4><p>Reserved slot — add PERPLEXITY_API_KEY to Netlify env vars</p><div class="slot-status" style="background:var(--amber-dim);color:var(--amber);">● SLOT OPEN</div></div>
   </div>
 </div>
@@ -1577,12 +1577,13 @@ function switchAcct(acct,el){
 let aiModel='claude';
 let aiHistory=[];
 function setModel(m,el){
-  if(m==='gemini'||m==='perplexity')return;
+  if(m==='perplexity')return;
   aiModel=m;
   document.querySelectorAll('.ai-mod').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   const msgs=document.getElementById('ai-msgs');
-  const label=m==='claude'?'Claude (Anthropic)':'GPT (OpenAI)';
+  const labels={'claude':'Claude Opus 4.6 (Anthropic)','openai':'GPT-5.4 (OpenAI)','gemini':'Gemini 2.5 Pro (Google)'};
+  const label=labels[m]||m;
   msgs.innerHTML+=`<div class="ai-msg bot"><div class="av">S</div><div class="bubble">Switched to <strong>${label}</strong>. Ready.</div></div>`;
   msgs.scrollTop=msgs.scrollHeight;
 }
@@ -1595,7 +1596,7 @@ async function sendAI(){
   const btn=document.getElementById('ai-send');
   btn.disabled=true;btn.textContent='...';
   msgs.innerHTML+=`<div class="ai-msg user"><div class="av">DH</div><div class="bubble">${esc(text)}</div></div>`;
-  msgs.innerHTML+=`<div class="ai-msg bot" id="ai-typing"><div class="av">${aiModel==='claude'?'C':'G'}</div><div class="bubble" style="color:var(--text-muted);">Thinking...</div></div>`;
+  msgs.innerHTML+=`<div class="ai-msg bot" id="ai-typing"><div class="av">${aiModel==='claude'?'C':aiModel==='gemini'?'G✦':'G'}</div><div class="bubble" style="color:var(--text-muted);">Thinking...</div></div>`;
   msgs.scrollTop=msgs.scrollHeight;
   try{
     const r=await fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:aiModel,prompt:text,history:aiHistory.slice(-10)})});
@@ -1606,7 +1607,7 @@ async function sendAI(){
     const typing=document.getElementById('ai-typing');
     if(typing){
       const formatted=reply.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');
-      typing.innerHTML=`<div class="av">${aiModel==='claude'?'C':'G'}</div><div class="bubble">${formatted}</div>`;
+      typing.innerHTML=`<div class="av">${aiModel==='claude'?'C':aiModel==='gemini'?'G✦':'G'}</div><div class="bubble">${formatted}</div>`;
       typing.removeAttribute('id');
     }
   }catch(e){
