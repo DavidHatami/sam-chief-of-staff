@@ -383,7 +383,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
     <div style="display:flex;gap:8px;">
       <button onclick="openAddEvent()" style="padding:8px 18px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">📅 Add Event</button>
       <button onclick="openCalTask()" style="padding:8px 18px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">✅ Add Task</button>
-      <button onclick="loadCal()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
+      <button onclick="this.textContent='↻ Refreshing...';this.disabled=true;cLoaded=false;loadCal().finally(()=>{this.textContent='↻ Refresh';this.disabled=false;})" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
     </div>
   </div>
   <div id="cevents" style="max-height:calc(100vh - 220px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;"><div class="eld">Loading calendar...</div></div>
@@ -556,7 +556,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 <div id="p-events" class="page">
   <div class="hdr"><div><h1>Events</h1><p class="hdr-sub">Aggregated timeline from all sources — Calendar, Zoom, Tasks</p></div>
     <div style="display:flex;gap:8px;">
-      <button onclick="loadEvents()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">↻ Refresh</button>
+      <button onclick="this.textContent='↻ Refreshing...';this.disabled=true;eventsLoaded=false;loadEvents().finally(()=>{this.textContent='↻ Refresh';this.disabled=false;})" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">↻ Refresh</button>
     </div>
   </div>
   <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
@@ -712,7 +712,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   <div class="hdr"><div><h1>Tasks</h1><p class="hdr-sub">Manage your to-do list — persistent across sessions</p></div>
     <div style="display:flex;gap:8px;">
       <button onclick="openAddTask()" style="padding:8px 18px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">＋ Add Task</button>
-      <button onclick="loadTasks()" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
+      <button onclick="this.textContent='↻ Refreshing...';this.disabled=true;loadTasks().finally(()=>{this.textContent='↻ Refresh';this.disabled=false;})" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
     </div>
   </div>
   <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
@@ -732,7 +732,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
         <span style="font-size:18px;">🚫</span>
         <div><div style="font-size:13px;font-weight:600;">Cancelled Tasks</div><div id="cancelled-count" style="font-size:11px;color:var(--text-muted);font-family:var(--mono);"></div></div>
       </div>
-      <button class="etb-f" onclick="filterTasks('canceled',document.querySelector('.etb-f:nth-child(6)'))">View All</button>
+      <div style="display:flex;gap:6px;"><button class="etb-f" onclick="filterTasks('canceled',document.querySelector('.etb-f:nth-child(6)'))">View All</button><button onclick="document.getElementById('cancelled-bucket').style.display='none';cancelBucketDismissed=true;" style="background:none;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;padding:3px 8px;border-radius:4px;font-size:12px;">✕</button></div>
     </div>
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
@@ -1807,12 +1807,12 @@ async function loadCal(){
     let html='',ld='';
     allEvs.forEach(e=>{
       const raw=e.start?.dateTime||'';
-      const s=raw.includes('Z')||raw.includes('+')?new Date(raw):new Date(raw+'Z');
+      const hasTZ=/[Z]|[+-]\d{2}:\d{2}$/.test(raw);const s=hasTZ?new Date(raw):new Date(raw+'Z');
       const ds=s.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',timeZone:'America/New_York'});
       if(ds!==ld){html+=`<div class="cdh">${ds}</div>`;ld=ds;}
       const ts=s.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
       const rawEnd=e.end?.dateTime||'';
-      const en=rawEnd.includes('Z')||rawEnd.includes('+')?new Date(rawEnd):new Date(rawEnd+'Z');
+      const hasTZe=/[Z]|[+-]\d{2}:\d{2}$/.test(rawEnd);const en=hasTZe?new Date(rawEnd):new Date(rawEnd+'Z');
       const te=en.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
       const srcBadge=e._src==='Google'?'<span style="font-size:9px;color:var(--green);font-family:var(--mono);margin-left:8px;">GOOGLE</span>':'';
       html+=`<div class="ce"><div class="ct">${ts} — ${te}${srcBadge}</div><div class="cn">${esc(e.subject||'(no title)')}</div>${e.location?.displayName?'<div class="cl">'+esc(e.location.displayName)+'</div>':''}</div>`;
@@ -1882,7 +1882,7 @@ async function saveEvent(){
   const endM=String(endDate.getMinutes()).padStart(2,'0');
   const endDT=date+'T'+endH+':'+endM+':00';
 
-  const attendees=attendeesStr?attendeesStr.split(',').map(e=>e.trim()).filter(Boolean):[];
+  const attendees=attendeesStr?attendeesStr.split(/[,;]/g).map(e=>e.trim()).filter(Boolean):[];
   const payload={subject:title,start:startDT,end:endDT,location:loc,body:notes,attendees:attendees};
 
   const btn=document.getElementById('ev-save');
@@ -1941,6 +1941,20 @@ loadE('inbox',document.getElementById('btn-inbox'));
   }catch(e){const el=document.getElementById('szoom');if(el)el.textContent='0';}
 })();
 
+// ── DASHBOARD TODAY'S EVENTS COUNT ──
+(async function(){
+  try{
+    const today=new Date();today.setHours(0,0,0,0);
+    const tomorrow=new Date(today);tomorrow.setDate(tomorrow.getDate()+1);
+    const [m365R,gcalR]=await Promise.allSettled([fetch('/api/m365/calendar'),fetch('/api/gcal/events')]);
+    let count=0;
+    const ct=(evts)=>{evts.forEach(e=>{const raw=e.start?.dateTime||'';const hasTZ=/[Z]|[+-]\d{2}:\d{2}$/.test(raw);const d=hasTZ?new Date(raw):new Date(raw+'Z');if(d>=today&&d<tomorrow)count++;});};
+    if(m365R.status==='fulfilled'){const d=await m365R.value.json();ct(d.value||[]);}
+    if(gcalR.status==='fulfilled'){const d=await gcalR.value.json();ct(d.value||[]);}
+    const el=document.getElementById('sev');if(el)el.textContent=count;
+  }catch(e){const el=document.getElementById('sev');if(el)el.textContent='0';}
+})();
+
 // ── MINI CALENDAR ──
 let mcY,mcM,mcEventDays=new Set();
 (function(){const n=new Date();mcY=n.getFullYear();mcM=n.getMonth();renderMC();fetchMCEvents();})();
@@ -1960,7 +1974,7 @@ async function fetchMCEvents(){
     }
     if(gcalRes.status==='fulfilled'){
       const d=await gcalRes.value.json();
-      (d.value||[]).forEach(ev=>{const raw=ev.start?.dateTime||'';const dt=raw.includes('Z')||raw.includes('+')?new Date(raw):new Date(raw);mcEventDays.add(dt.getDate());});
+      (d.value||[]).forEach(ev=>{const raw=ev.start?.dateTime||'';const dt=(/[Z]|[+-]\d{2}:\d{2}$/.test(raw))?new Date(raw):new Date(raw+'Z');mcEventDays.add(dt.getDate());});
     }
     renderMC();
   }catch(e){}
@@ -2354,9 +2368,9 @@ async function loadEvents(){
       const d=await gcalRes.value.json();
       (d.value||[]).forEach(e=>{
         const raw=e.start?.dateTime||'';
-        const s=raw.includes('Z')||raw.includes('+')?new Date(raw):new Date(raw);
+        const s=(/[Z]|[+-]\d{2}:\d{2}$/.test(raw))?new Date(raw):new Date(raw+'Z');
         const rawEnd=e.end?.dateTime||'';
-        const en=rawEnd.includes('Z')||rawEnd.includes('+')?new Date(rawEnd):new Date(rawEnd);
+        const en=(/[Z]|[+-]\d{2}:\d{2}$/.test(rawEnd))?new Date(rawEnd):new Date(rawEnd+'Z');
         // Skip if duplicate of M365 event (dual-synced)
         const isDupe=allEvents.some(x=>x.source==='calendar'&&Math.abs(x.datetime-s)<120000&&x.title.toLowerCase()===(e.subject||'').toLowerCase());
         if(!isDupe){
@@ -2902,7 +2916,7 @@ async function createZoomMeeting(){
   const pass=document.getElementById('zm-pass').value.trim();
   const attendeesStr=document.getElementById('zm-attendees').value.trim();
   const calSync=document.getElementById('zm-cal-sync').checked;
-  const attendees=attendeesStr?attendeesStr.split(',').map(e=>e.trim()).filter(Boolean):[];
+  const attendees=attendeesStr?attendeesStr.split(/[,;]/g).map(e=>e.trim()).filter(Boolean):[];
 
   const startTime=date+'T'+time+':00';
   const btn=document.getElementById('zm-save');
@@ -2943,6 +2957,7 @@ async function createZoomMeeting(){
 // ── TASKS SYSTEM ──
 let allTasks=[];
 let taskFilter='all';
+let cancelBucketDismissed=false;
 let editingTaskId=null;
 
 async function loadTasks(){
@@ -3185,7 +3200,7 @@ async function deleteTask(id){
 function updateDashboardTasks(){
   // Update dashboard priority tasks card
   const dtasks=document.getElementById('dtasks');
-  const top4=allTasks.filter(t=>t.status!=='done'&&t.status!=='canceled'&&t.status!=='archived').slice(0,4);
+  const top4=allTasks.filter(t=>t.status!=='done'&&t.status!=='canceled'&&t.status!=='archived').slice(0,10);
   if(!top4.length){
     dtasks.innerHTML='<div class="eld">No pending tasks. Click "VIEW ALL" to add some.</div>';
   }else{
@@ -3193,7 +3208,7 @@ function updateDashboardTasks(){
     top4.forEach(t=>{
       const tagClass=t.priority==='urgent'?'tu':t.status==='in-progress'?'tp':'tu';
       const tagLabel=t.priority==='urgent'?'URGENT':t.status==='in-progress'?'IN PROGRESS':'PENDING';
-      html+=`<div class="tr" style="cursor:pointer;" onclick="go('tasks',document.querySelectorAll('.ni')[3])"><div><div class="tn">${esc(t.title)}</div><div class="tm">${esc(t.category||'Uncategorized')}</div></div><span class="tag ${tagClass}">${tagLabel}</span></div>`;
+      html+=`<div class="tr"><div><div class="tn">${esc(t.title)}</div><div class="tm">${esc(t.category||'Uncategorized')}</div></div><span class="tag ${tagClass}">${tagLabel}</span></div>`;
     });
     dtasks.innerHTML=html;
   }
@@ -3213,10 +3228,12 @@ function updateDashboardTasks(){
   const cancelledCount=allTasks.filter(t=>t.status==='canceled').length;
   const cb=document.getElementById('cancelled-bucket');
   const cc=document.getElementById('cancelled-count');
-  if(cb){cb.style.display=cancelledCount>0?'block':'none';}
+  if(cb){cb.style.display=(cancelledCount>0&&taskFilter==='all'&&!cancelBucketDismissed)?'block':'none';}
   if(cc){cc.textContent=cancelledCount+' cancelled task'+(cancelledCount!==1?'s':'');}
 }
 
+// Move task modal to body root so it works from all pages (Calendar, Zoom, etc.)
+(function(){var m=document.getElementById('task-modal');if(m)document.body.appendChild(m);})();
 // Close modal on backdrop click
 document.getElementById('task-modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
 // Close modal on Escape
