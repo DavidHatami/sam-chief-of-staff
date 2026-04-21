@@ -209,12 +209,17 @@ export default async (req: Request, context: Context) => {
     // ── MARK READ/UNREAD (Yahoo) ──
     if (path === "/mail/read" && req.method === "PATCH") {
       const body = await req.json();
-      const { id: msgId, isRead } = body;
+      const { id: msgId, isRead, folder } = body;
       if (!msgId) {
         return new Response(JSON.stringify({ error: "Missing id" }), { status: 400, headers });
       }
+      const folderMap: Record<string, string> = {
+        inbox: "INBOX", sent: "Sent", sentitems: "Sent",
+        drafts: "Draft", trash: "Trash",
+      };
+      const mailbox = folderMap[folder || "inbox"] || "INBOX";
       client = await getImapClient();
-      const lock = await client.getMailboxLock("INBOX");
+      const lock = await client.getMailboxLock(mailbox);
       try {
         if (isRead) {
           await client.messageFlagsAdd(String(msgId), ["\\Seen"], { uid: true });
@@ -233,32 +238,52 @@ export default async (req: Request, context: Context) => {
     // ── DELETE / TRASH EMAIL ──
     if (path === "/mail" && req.method === "DELETE") {
       const msgId = url.searchParams.get("id");
+      const folder = url.searchParams.get("folder") || "inbox";
       if (!msgId)
         return new Response(
           JSON.stringify({ error: "Missing message id" }),
           { status: 400, headers }
         );
 
+      // Map incoming folder param to Yahoo mailbox name
+      const folderMap: Record<string, string> = {
+        inbox: "INBOX", sent: "Sent", sentitems: "Sent",
+        drafts: "Draft", trash: "Trash",
+      };
+      const sourceMailbox = folderMap[folder] || "INBOX";
+      // If already in Trash OR deleting a Draft, permanently delete
+      const permanent = sourceMailbox === "Trash" || sourceMailbox === "Draft";
+
       client = await getImapClient();
-      const lock = await client.getMailboxLock("INBOX");
+      const lock = await client.getMailboxLock(sourceMailbox);
       try {
-        // Move to Trash
-        await client.messageMove(String(msgId), "Trash", { uid: true });
-        lock.release();
-        await client.logout();
-        return new Response(
-          JSON.stringify({ success: true, message: "Email moved to Trash" }),
-          { headers }
-        );
+        if (permanent) {
+          // Flag as deleted and expunge — permanent removal
+          await client.messageFlagsAdd(String(msgId), ["\\Deleted"], { uid: true });
+          try { await client.messageDelete(String(msgId), { uid: true }); } catch (e) {}
+          lock.release();
+          await client.logout();
+          return new Response(
+            JSON.stringify({ success: true, message: "Email permanently deleted" }),
+            { headers }
+          );
+        } else {
+          // Move to Trash
+          await client.messageMove(String(msgId), "Trash", { uid: true });
+          lock.release();
+          await client.logout();
+          return new Response(
+            JSON.stringify({ success: true, message: "Email moved to Trash" }),
+            { headers }
+          );
+        }
       } catch (err) {
         lock.release();
-        // If move fails, try flagging as deleted
+        // Fallback: flag as deleted in source folder
         try {
-          const lock2 = await client.getMailboxLock("INBOX");
-          await client.messageFlagsAdd(String(msgId), ["\\Deleted"], {
-            uid: true,
-          });
-          await client.messageDelete(String(msgId), { uid: true });
+          const lock2 = await client.getMailboxLock(sourceMailbox);
+          await client.messageFlagsAdd(String(msgId), ["\\Deleted"], { uid: true });
+          try { await client.messageDelete(String(msgId), { uid: true }); } catch (e) {}
           lock2.release();
           await client.logout();
           return new Response(

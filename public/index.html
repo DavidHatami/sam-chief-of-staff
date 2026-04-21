@@ -1096,13 +1096,19 @@ async function saveInstruction(){
 }
 
 async function toggleInst(id,enabled){
-  await fetch('/api/instructions/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+  try{
+    const r=await fetch('/api/instructions/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+    if(!r.ok){const d=await r.json().catch(()=>({}));console.warn('Toggle failed:',d.error||r.status);}
+  }catch(e){console.warn('Toggle network error:',e);}
   loadInstructions();
 }
 
 async function deleteInst(id){
   if(!confirm('Delete this instruction? SAM will forget this permanently.'))return;
-  await fetch('/api/instructions/'+id,{method:'DELETE'});
+  try{
+    const r=await fetch('/api/instructions/'+id,{method:'DELETE'});
+    if(!r.ok){const d=await r.json().catch(()=>({}));alert('Delete failed: '+(d.error||r.status));return;}
+  }catch(e){alert('Delete failed — network error');return;}
   loadInstructions();
 }
 
@@ -1505,7 +1511,7 @@ async function toggleReadStatus(){
   const newStatus=!isRead;
   const apiBase=getAccountApiBase(currentMailAPI);
   try{
-    const r=await fetch(apiBase+'/mail/read',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:currentEmail.id,isRead:newStatus})});
+    const r=await fetch(apiBase+'/mail/read',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:currentEmail.id,isRead:newStatus,folder:currentFolder||'inbox'})});
     const d=await r.json();
     if(d.success){
       currentEmail.isRead=newStatus;
@@ -1611,7 +1617,7 @@ async function readEmail(mid,row){
     if(row){row.classList.remove('unread');const dot=row.querySelector('.edot');if(dot)dot.className='edot r';}
     // Background mark-as-read on server (won't block UI)
     const apiBase=getAccountApiBase(currentMailAPI);
-    fetch(apiBase+'/mail/read',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:decodeURIComponent(mid),isRead:true})}).catch(()=>{});
+    fetch(apiBase+'/mail/read',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:decodeURIComponent(mid),isRead:true,folder:currentFolder||'inbox'})}).catch(()=>{});
     return;
   }
 
@@ -1822,7 +1828,7 @@ async function deleteEmail(){
   if(btn){btn.disabled=true;btn.textContent='Deleting...';}
   try{
     const apiBase=getAccountApiBase(currentMailAPI);
-    const r=await fetch(apiBase+'/mail?id='+encodeURIComponent(currentEmail.id),{method:'DELETE'});
+    const r=await fetch(apiBase+'/mail?id='+encodeURIComponent(currentEmail.id)+'&folder='+encodeURIComponent(currentFolder||'inbox'),{method:'DELETE'});
     const d=await r.json();
     if(d.success){
       if(btn){btn.textContent='Deleted ✓';btn.style.background='var(--green-dim)';btn.style.color='var(--green)';}
@@ -2765,8 +2771,11 @@ function saveProjectField(field,value){
   if(!currentProject)return;
   clearTimeout(saveFieldTimer);
   saveFieldTimer=setTimeout(async()=>{
-    await fetch('/api/projects/'+currentProject.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({[field]:value})});
-    currentProject[field]=value;
+    try{
+      const r=await fetch('/api/projects/'+currentProject.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({[field]:value})});
+      if(r.ok){currentProject[field]=value;}
+      else{console.warn('Project save failed:',field);}
+    }catch(e){console.warn('Project save network error:',e);}
   },800);
 }
 
@@ -2791,7 +2800,10 @@ async function addKnowledge(){
 async function deleteKB(kbId){
   if(!currentProject)return;
   if(!confirm('Remove this knowledge item?'))return;
-  await fetch('/api/projects/'+currentProject.id+'/kb/'+kbId,{method:'DELETE'});
+  try{
+    const r=await fetch('/api/projects/'+currentProject.id+'/kb/'+kbId,{method:'DELETE'});
+    if(!r.ok){const d=await r.json().catch(()=>({}));alert('Remove failed: '+(d.error||r.status));return;}
+  }catch(e){alert('Remove failed — network error');return;}
   openProject(currentProject.id);
 }
 
