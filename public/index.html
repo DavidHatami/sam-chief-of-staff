@@ -3585,7 +3585,11 @@ function openEventEmail(account,emailId){
   go('email',document.querySelectorAll('.ni')[1]);
   // After page is active, switch account + open email (give it a frame)
   setTimeout(function(){
-    if(typeof switchAcct==='function'&&currentMailAPI!==account)switchAcct(account);
+    if(typeof switchAcct==='function'&&currentMailAPI!==account){
+      // Pass the correct tab DOM element so the active indicator updates too
+      const tabEl=document.querySelector('.email-acct[data-acct="'+account+'"]');
+      switchAcct(account,tabEl);
+    }
     // Wait for list to populate, then click the email
     const tryOpen=function(attempt){
       if(attempt>20)return;
