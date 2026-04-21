@@ -29,6 +29,11 @@
   timeout = 26
 
 [[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "private, max-age=30, stale-while-revalidate=60"
+
+[[headers]]
   for = "/*"
   [headers.values]
     X-Frame-Options = "DENY"

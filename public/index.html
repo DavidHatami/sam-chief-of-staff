@@ -2133,8 +2133,9 @@ async function loadCal(){
       const te=(en&&!isNaN(en.getTime()))?en.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
       const timeDisplay=te?`${ts} \u2014 ${te}`:ts;
       const srcBadge=e._src==='Google'?'<span style="font-size:9px;color:var(--green);font-family:var(--mono);margin-left:8px;">GOOGLE</span>':'';
-      const loc=e.location?.displayName||e.location||'';
-      const isZoom=loc.toLowerCase().includes('zoom')||(e.subject||'').toLowerCase().includes('zoom')||e.isOnlineMeeting;
+      const locRaw=e.location?.displayName||e.location||'';
+      const loc=typeof locRaw==='string'?locRaw:locRaw?.displayName||String(locRaw||'');
+      const isZoom=(loc||'').toLowerCase().includes('zoom')||(e.subject||'').toLowerCase().includes('zoom')||e.isOnlineMeeting;
       const organizer=e.organizer?.emailAddress?.name||e.organizer?.email||'';
       const durMin=(en&&!isNaN(en.getTime()))?Math.round((en.getTime()-s.getTime())/60000):0;
       html+=`<div class="ce" onclick="this.classList.toggle('open')" data-eid="${esc(e.id||'')}" data-esrc="${e._src||''}">
@@ -2290,8 +2291,8 @@ function openCalTask(){
 }
 
 loadE('inbox',document.getElementById('btn-inbox'));
-// Preload Gmail + Yahoo caches in background for instant tab switching
-setTimeout(preloadAllEmail,2000);
+// Fire preload of ALL accounts immediately — don't wait
+preloadAllEmail();
 (async function(){
   try{
     const r=await fetch('/api/zoom/meetings');

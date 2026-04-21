@@ -65,7 +65,7 @@ function getHeader(headers: GmailHeader[], name: string): string {
 export default async (req: Request, context: Context) => {
   const url = new URL(req.url);
   const path = url.pathname.replace("/api/gmail", "");
-  const headers = { "Content-Type": "application/json" };
+  const headers = { "Content-Type": "application/json", "Cache-Control": "private, max-age=30, stale-while-revalidate=60" };
 
   try {
     const token = await getGoogleToken();

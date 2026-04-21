@@ -56,6 +56,7 @@ export default async (req: Request, context: Context) => {
   const path = url.pathname.replace("/api/yahoo", "");
   const headers = {
     "Content-Type": "application/json",
+    "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
   };
