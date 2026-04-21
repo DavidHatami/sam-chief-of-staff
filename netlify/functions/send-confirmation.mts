@@ -18,7 +18,23 @@ export default async (req: Request, context: Context) => {
 
   try {
     const body = await req.json();
-    const { name, email, type, duration, date, time, startISO, endISO, org, notes, platform } = body;
+    const { email, startISO, endISO } = body;
+
+    // HTML-escape all user-controlled display fields before interpolation so booking form
+    // submissions can't smuggle HTML into admin's inbox. Email clients sanitize
+    // aggressively but relying on that is wrong — escape at the source.
+    // Note: `email` stays raw because it's used as an actual recipient address,
+    // and we HTML-escape separately when it appears inside markup.
+    const esc = (s: any) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const name = esc(body.name);
+    const type = esc(body.type);
+    const date = esc(body.date);
+    const time = esc(body.time);
+    const duration = esc(body.duration);
+    const org = esc(body.org);
+    const notes = esc(body.notes);
+    const platform = esc(body.platform);
+    const escEmail = esc(body.email);
 
     // ── EMAIL TO CLIENT ──
     const clientHtml = `
@@ -102,7 +118,7 @@ export default async (req: Request, context: Context) => {
 
   <table width="100%" cellpadding="4" cellspacing="0" style="font-size:14px;color:#374151;">
   <tr><td style="font-weight:600;width:100px;vertical-align:top;">Name:</td><td>${name}</td></tr>
-  <tr><td style="font-weight:600;vertical-align:top;">Email:</td><td><a href="mailto:${email}" style="color:#4a7cff;">${email}</a></td></tr>
+  <tr><td style="font-weight:600;vertical-align:top;">Email:</td><td><a href="mailto:${escEmail}" style="color:#4a7cff;">${escEmail}</a></td></tr>
   ${org ? `<tr><td style="font-weight:600;vertical-align:top;">Org:</td><td>${org}</td></tr>` : ""}
   ${notes ? `<tr><td style="font-weight:600;vertical-align:top;">Notes:</td><td>${notes}</td></tr>` : ""}
   </table>
@@ -151,13 +167,23 @@ export default async (req: Request, context: Context) => {
     const clientData = await clientResp.json();
     const adminData = await adminResp.json();
 
+    // Honest outcome: Resend returns 200 on accept, 4xx on error.
+    // Previously returned success:true regardless of Resend response — so if
+    // a recipient was rejected or the API key was bad, caller saw success.
+    const bothOk = clientResp.ok && adminResp.ok;
+    const anyOk = clientResp.ok || adminResp.ok;
     return new Response(
       JSON.stringify({
-        success: true,
+        success: bothOk,
+        partial: !bothOk && anyOk,
+        clientSent: clientResp.ok,
+        adminSent: adminResp.ok,
         clientEmailId: clientData.id,
         adminEmailId: adminData.id,
+        clientError: clientResp.ok ? null : (clientData.message || "Resend rejected client email"),
+        adminError: adminResp.ok ? null : (adminData.message || "Resend rejected admin email"),
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: bothOk ? 200 : (anyOk ? 207 : 500), headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("Email error:", err);
