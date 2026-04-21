@@ -11,10 +11,37 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>Secret Agent Man — Chief of Staff | Dr. David Hatami</title>
+<script>
+/* Auth pre-check — runs synchronously before any render so authed users see no gate flash.
+   Sets html[data-authed="1"] which the CSS uses to hide the overlay. */
+(function(){
+  try{
+    if(localStorage.getItem('sam_auth_v1')==='ok'){
+      document.documentElement.setAttribute('data-authed','1');
+    }
+  }catch(e){}
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0a0b0d;--surface:#12141a;--surface-2:#1a1d26;--border:#2a2e3a;--accent:#4a7cff;--accent-glow:rgba(74,124,255,0.15);--text:#e8eaf0;--text-dim:#8b8fa3;--text-muted:#5c6070;--green:#34d399;--green-dim:rgba(52,211,153,0.12);--amber:#fbbf24;--amber-dim:rgba(251,191,36,0.12);--red:#f87171;--red-dim:rgba(248,113,113,0.12);--font:'DM Sans',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace;--sidebar-w:220px;}
 *{margin:0;padding:0;box-sizing:border-box;}body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;-webkit-tap-highlight-color:transparent;}
+/* Auth gate — shows by default; hidden once authed flag set in localStorage */
+#auth-gate{position:fixed;inset:0;background:var(--bg);z-index:100000;display:flex;align-items:center;justify-content:center;}
+html[data-authed="1"] #auth-gate{display:none!important;}
+html:not([data-authed="1"]) body>*:not(#auth-gate){filter:blur(4px);pointer-events:none;user-select:none;}
+.ag-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 24px;width:100%;max-width:360px;margin:20px;box-shadow:0 20px 50px rgba(0,0,0,0.6);}
+.ag-brand{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+.ag-brand .icon{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0;}
+.ag-box h2{font-size:15px;font-weight:700;margin-bottom:2px;}
+.ag-box .sub{font-size:11px;color:var(--text-muted);font-family:var(--mono);}
+.ag-input{width:100%;padding:10px 12px;border-radius:7px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;margin-bottom:10px;outline:none;transition:border-color 0.15s;}
+.ag-input:focus{border-color:var(--accent);}
+.ag-row{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:var(--text-dim);cursor:pointer;}
+.ag-row input[type="checkbox"]{accent-color:var(--accent);cursor:pointer;}
+.ag-btn{width:100%;padding:10px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#7c3aed);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.15s;}
+.ag-btn:hover{opacity:0.9;}
+.ag-err{color:var(--red);font-size:11px;font-family:var(--mono);margin-top:8px;min-height:14px;}
 button,a,.ni,.ei,.ti,.etb-f,.email-acct,.ai-mod{touch-action:manipulation;-webkit-touch-callout:none;}
 button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}::-webkit-scrollbar-thumb:hover{background:var(--text-muted);}
@@ -246,6 +273,51 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 </style>
 </head>
 <body>
+<!-- ── SAM Lock ── app-level gate. Remembers per-device via localStorage. -->
+<div id="auth-gate">
+  <div class="ag-box">
+    <div class="ag-brand"><div class="icon">S</div><div><h2>Secret Agent Man</h2><div class="sub">CHIEF OF STAFF</div></div></div>
+    <form id="auth-form" onsubmit="event.preventDefault();samUnlock();">
+      <input id="auth-pwd" class="ag-input" type="password" placeholder="Password" autocomplete="current-password" autofocus>
+      <label class="ag-row"><input id="auth-remember" type="checkbox" checked> Keep me signed in on this device</label>
+      <button type="submit" class="ag-btn">Unlock</button>
+      <div id="auth-err" class="ag-err"></div>
+    </form>
+  </div>
+</div>
+<script>
+function samUnlock(){
+  var pwd=document.getElementById('auth-pwd').value;
+  var remember=document.getElementById('auth-remember').checked;
+  var err=document.getElementById('auth-err');
+  /* SHA-256 of 'SAM2026!' */
+  var expected='81b17ecac50ae151d3f1f5be98063d739e5b895cbfb992dbb103e117dbdbb931';
+  (async function(){
+    try{
+      var enc=new TextEncoder().encode(pwd);
+      var buf=await crypto.subtle.digest('SHA-256',enc);
+      var hex=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+      if(hex===expected){
+        if(remember){try{localStorage.setItem('sam_auth_v1','ok');}catch(e){}}
+        else{try{sessionStorage.setItem('sam_auth_session','ok');}catch(e){}}
+        document.documentElement.setAttribute('data-authed','1');
+      }else{
+        err.textContent='Incorrect password.';
+        document.getElementById('auth-pwd').value='';
+        document.getElementById('auth-pwd').focus();
+      }
+    }catch(e){err.textContent='Browser error: '+e.message;}
+  })();
+}
+function samSignOut(){
+  try{localStorage.removeItem('sam_auth_v1');sessionStorage.removeItem('sam_auth_session');}catch(e){}
+  document.documentElement.removeAttribute('data-authed');
+  var p=document.getElementById('auth-pwd');if(p){p.value='';p.focus();}
+  var e=document.getElementById('auth-err');if(e)e.textContent='';
+}
+/* Session-only auth respected too (for users who un-checked remember) */
+(function(){try{if(sessionStorage.getItem('sam_auth_session')==='ok')document.documentElement.setAttribute('data-authed','1');}catch(e){}})();
+</script>
 <div class="sidebar" id="main-sidebar">
   <div class="sb-brand"><div class="icon">S</div><div><div class="bt">Secret Agent Man</div><div class="bs">Chief of Staff</div></div></div>
   <div style="padding:10px 10px 6px;position:relative;">
@@ -269,6 +341,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   <div class="sb-foot">
     <span class="dot"></span><span id="sb-status-text">ONLINE</span>
     <div style="flex:1;"></div>
+    <button onclick="samSignOut()" title="Sign out" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;padding:3px 7px;border-radius:4px;font-size:11px;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">🔒</button>
     <button id="sb-collapse-btn" onclick="toggleSidebar()" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;padding:3px 8px;border-radius:4px;font-size:12px;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">◀</button>
   </div>
 </div>
