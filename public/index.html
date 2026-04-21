@@ -1621,6 +1621,8 @@ async function sendSAM(){
   // Add user message
   msgs.innerHTML+=`<div class="ai-msg user" style="margin-bottom:10px;"><div class="av" style="width:24px;height:24px;font-size:10px;">DH</div><div class="bubble" style="font-size:13px;">${esc(text)}</div></div>`;
   msgs.innerHTML+=`<div class="ai-msg bot" id="sam-typing" style="margin-bottom:10px;"><div class="av" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);">S</div><div class="bubble" style="font-size:13px;color:var(--text-muted);">Thinking...</div></div>`;
+  // Cap DOM children at 30 bubbles — dashboard dialogue is smaller than Workbench, but same accumulation issue
+  while(msgs.children.length>30)msgs.removeChild(msgs.firstChild);
   msgs.scrollTop=msgs.scrollHeight;
 
   // Build RICH context — feed SAM real data, not just counts
@@ -3165,6 +3167,9 @@ async function sendAI(){
   const avLabel=isCouncil?'⚡':aiModel==='claude'?'C':aiModel==='gemini'?'G✦':'G';
   const thinkMsg=isCouncil?'Consulting all 3 engines simultaneously...':'Thinking...';
   msgs.innerHTML+=`<div class="ai-msg bot" id="ai-typing"><div class="av">${avLabel}</div><div class="bubble" style="color:var(--text-muted);">${thinkMsg}</div></div>`;
+  // Cap DOM children at 40 bubbles (~20 turns) — prior sessions accumulated hundreds of
+  // message elements which made scrolling and every subsequent innerHTML reparse slow
+  while(msgs.children.length>40)msgs.removeChild(msgs.firstChild);
   msgs.scrollTop=msgs.scrollHeight;
   try{
     // Inject project context if a project is active
