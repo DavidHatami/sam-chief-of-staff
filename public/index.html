@@ -591,15 +591,16 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   </div>
 </div>
 <div id="p-events" class="page">
-  <div class="hdr"><div><h1>Events</h1><p class="hdr-sub">Aggregated timeline from all sources — Calendar, Zoom, Tasks</p></div>
+  <div class="hdr"><div><h1>Events</h1><p class="hdr-sub">Aggregated timeline from all sources — Calendar, Zoom, Email, Tasks</p></div>
     <div style="display:flex;gap:8px;">
       <button onclick="this.textContent='↻ Refreshing...';this.disabled=true;eventsLoaded=false;loadEvents().finally(()=>{this.textContent='↻ Refresh';this.disabled=false;})" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">↻ Refresh</button>
     </div>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
+  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
     <button class="etb-f active" onclick="filterEvents('all',this)">All Sources</button>
     <button class="etb-f" onclick="filterEvents('calendar',this)">📅 Calendar</button>
     <button class="etb-f" onclick="filterEvents('zoom',this)">🎥 Zoom</button>
+    <button class="etb-f" onclick="filterEvents('email',this)">📧 Email</button>
     <button class="etb-f" onclick="filterEvents('tasks',this)">✅ Task Deadlines</button>
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
@@ -2851,11 +2852,14 @@ async function loadEvents(){
   const start=new Date(now.getTime()-7*24*60*60*1000).toISOString();
   const end=new Date(now.getTime()+30*24*60*60*1000).toISOString();
 
-  const [m365Res,gcalRes,zoomRes,tasksRes]=await Promise.allSettled([
+  const [m365Res,gcalRes,zoomRes,tasksRes,m365MailRes,gmailRes,yahooRes]=await Promise.allSettled([
     fetch('/api/m365/calendar?start='+encodeURIComponent(start)+'&end='+encodeURIComponent(end)),
     fetch('/api/gcal/events?start='+encodeURIComponent(start)+'&end='+encodeURIComponent(end)),
     fetch('/api/zoom/meetings'),
-    fetch('/api/tasks/')
+    fetch('/api/tasks/'),
+    fetch('/api/m365/mail?folder=inbox&top=30'),
+    fetch('/api/gmail/mail?folder=inbox&top=20'),
+    fetch('/api/yahoo/mail?folder=inbox&top=20')
   ]);
 
   // Process M365 Calendar events
@@ -2944,6 +2948,38 @@ async function loadEvents(){
     }
   }catch(e){}
 
+  // Process Email (3 accounts) — show unread only, last 14 days
+  const mailCutoff=new Date(now.getTime()-14*24*60*60*1000);
+  const mailSources=[
+    {res:m365MailRes,label:'Outlook',color:'#0078d4',account:'m365'},
+    {res:gmailRes,label:'Gmail',color:'#ea4335',account:'gmail'},
+    {res:yahooRes,label:'Yahoo',color:'#720e9e',account:'yahoo'},
+  ];
+  for(const src of mailSources){
+    try{
+      if(src.res.status==='fulfilled'){
+        const d=await src.res.value.json();
+        const items=d.value||[];
+        items.forEach(m=>{
+          if(m.isRead)return; // only unread (actionable) items on timeline
+          const dt=new Date(m.receivedDateTime);
+          if(isNaN(dt.getTime())||dt<mailCutoff)return;
+          const fromName=m.from?.emailAddress?.name||m.from?.emailAddress?.address||'(unknown)';
+          allEvents.push({
+            source:'email',icon:'📧',color:src.color,
+            title:m.subject||'(no subject)',
+            datetime:dt,
+            endtime:dt,
+            location:'',
+            meta:src.label+' · from '+fromName,
+            emailId:m.id,
+            emailAccount:src.account
+          });
+        });
+      }
+    }catch(e){}
+  }
+
   // Sort by datetime
   allEvents.sort((a,b)=>a.datetime-b.datetime);
   renderEvents();
@@ -2976,7 +3012,10 @@ function renderEvents(){
     const ts=e.datetime.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
     const endTs=e.endtime&&e.endtime.getTime()!==e.datetime.getTime()?e.endtime.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
     const isPastEvent=e.datetime<now;
-    html+=`<div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:start;${isPastEvent?'opacity:0.5;':''}">
+    const rowCursor=e.emailId?'cursor:pointer;':'';
+    const rowClick=e.emailId?`onclick="openEventEmail('${esc(e.emailAccount)}','${esc(e.emailId)}')"`:'';
+    const rowHover=e.emailId?`onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''"`:'';
+    html+=`<div ${rowClick} ${rowHover} style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:start;${isPastEvent?'opacity:0.5;':''}${rowCursor}transition:background 0.12s;">
       <div style="width:4px;min-height:36px;border-radius:2px;background:${e.color};flex-shrink:0;margin-top:2px;"></div>
       <div style="font-size:18px;flex-shrink:0;margin-top:1px;">${e.icon}</div>
       <div style="flex:1;min-width:0;">
@@ -2987,10 +3026,36 @@ function renderEvents(){
           ${e.location?'<span>'+esc(e.location.substring(0,60))+'</span>':''}
         </div>
       </div>
-      ${e.joinUrl?`<a href="${esc(e.joinUrl)}" target="_blank" style="padding:4px 10px;border-radius:5px;background:var(--accent-glow);border:1px solid var(--accent);color:var(--accent);font-size:11px;text-decoration:none;font-family:var(--font);flex-shrink:0;">Join</a>`:''}
+      ${e.joinUrl?`<a href="${esc(e.joinUrl)}" target="_blank" onclick="event.stopPropagation()" style="padding:4px 10px;border-radius:5px;background:var(--accent-glow);border:1px solid var(--accent);color:var(--accent);font-size:11px;text-decoration:none;font-family:var(--font);flex-shrink:0;">Join</a>`:''}
+      ${e.emailId?`<span style="padding:4px 10px;border-radius:5px;background:var(--accent-glow);border:1px solid var(--accent);color:var(--accent);font-size:11px;font-family:var(--font);flex-shrink:0;">Open</span>`:''}
     </div>`;
   });
   el.innerHTML=html;
+}
+
+// Jump from Events page → Email page → open specific email
+function openEventEmail(account,emailId){
+  if(!account||!emailId)return;
+  // Switch to email page
+  go('email',document.querySelectorAll('.ni')[1]);
+  // After page is active, switch account + open email (give it a frame)
+  setTimeout(function(){
+    if(typeof switchAcct==='function'&&currentMailAPI!==account)switchAcct(account);
+    // Wait for list to populate, then click the email
+    const tryOpen=function(attempt){
+      if(attempt>20)return;
+      const rows=document.querySelectorAll('.ei');
+      for(const r of rows){
+        const onclickAttr=r.getAttribute('onclick')||'';
+        if(onclickAttr.indexOf(encodeURIComponent(emailId))>-1||onclickAttr.indexOf(emailId)>-1){
+          r.click();
+          return;
+        }
+      }
+      setTimeout(()=>tryOpen(attempt+1),200);
+    };
+    setTimeout(()=>tryOpen(0),300);
+  },100);
 }
 
 // ── RESIZABLE EVENTS LIST ──
