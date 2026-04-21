@@ -1520,12 +1520,18 @@ async function readEmail(mid,row){
   const empty=document.getElementById('ereader-empty');
   const content=document.getElementById('ereader-content');
   if(!empty||!content)return;
-  empty.textContent='Loading...';empty.style.display='block';content.style.display='none';
+  const acct=getAccountById(currentMailAPI);
+  const isImap=acct?.type==='yahoo';
+  empty.textContent=isImap?'Loading via IMAP (may take a few seconds)...':'Loading...';
+  empty.style.display='block';content.style.display='none';
   document.querySelectorAll('.ei').forEach(r=>{r.style.background='';r.style.borderLeft='';});
   if(row){row.style.background='var(--surface-2)';row.style.borderLeft='3px solid var(--accent)';}
   try{
     const apiBase=getAccountApiBase(currentMailAPI);
-    const r=await fetch(apiBase+'/mail?id='+mid);
+    const controller=new AbortController();
+    const timeoutId=setTimeout(()=>controller.abort(),20000); // 20s client-side timeout
+    const r=await fetch(apiBase+'/mail?id='+mid,{signal:controller.signal});
+    clearTimeout(timeoutId);
     const d=await r.json();
     if(d.error){empty.textContent='Error: '+d.error;return;}
     document.getElementById('er-subject').textContent=d.subject||'(no subject)';
@@ -1555,7 +1561,10 @@ async function readEmail(mid,row){
     closeCompose();
     updateFlagButton();
     if(row){row.classList.remove('unread');const dot=row.querySelector('.edot');if(dot)dot.className='edot r';}
-  }catch(e){empty.textContent='Error loading email.';}
+  }catch(e){
+    if(e.name==='AbortError'){empty.textContent='Request timed out. Yahoo IMAP connections can be slow — try again.';}
+    else{empty.textContent='Error loading email: '+(e.message||'Unknown error');}
+  }
 }
 let currentEmail=null;
 

@@ -9,6 +9,25 @@
   external_node_modules = ["node-fetch"]
   timeout = 26
 
+[functions."yahoo"]
+  external_node_modules = ["imapflow", "mailparser", "nodemailer"]
+  timeout = 26
+
+[functions."zoom"]
+  timeout = 26
+
+[functions."zoom-check-background"]
+  timeout = 26
+
+[functions."book"]
+  timeout = 26
+
+[functions."m365"]
+  timeout = 26
+
+[functions."gmail"]
+  timeout = 26
+
 [[headers]]
   for = "/*"
   [headers.values]
