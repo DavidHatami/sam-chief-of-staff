@@ -417,13 +417,20 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 </div>
 <div id="p-calendar" class="page">
   <div class="hdr"><div><h1>Calendar</h1><p class="hdr-sub">Google Calendar + M365 Calendar</p></div>
-    <div style="display:flex;gap:8px;">
-      <button onclick="openAddEvent()" style="padding:8px 18px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">📅 Add Event</button>
-      <button onclick="openCalTask()" style="padding:8px 18px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">✅ Add Task</button>
-      <button onclick="this.textContent='↻ Refreshing...';this.disabled=true;cLoaded=false;loadCal().finally(()=>{this.textContent='↻ Refresh';this.disabled=false;})" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:3px;">
+        <button id="cal-view-list" onclick="setCalView('list')" style="padding:5px 12px;border-radius:5px;background:var(--accent-glow);border:none;color:var(--accent);font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">List</button>
+        <button id="cal-view-week" onclick="setCalView('week')" style="padding:5px 12px;border-radius:5px;background:transparent;border:none;color:var(--text-dim);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">Week</button>
+        <button id="cal-view-month" onclick="setCalView('month')" style="padding:5px 12px;border-radius:5px;background:transparent;border:none;color:var(--text-dim);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">Month</button>
+      </div>
+      <button onclick="openAddEvent()" style="padding:8px 16px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">📅 Add Event</button>
+      <button onclick="openCalTask()" style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;">✅ Add Task</button>
+      <button onclick="this.textContent='↻';this.disabled=true;cLoaded=false;loadCal().finally(()=>{this.textContent='↻ Refresh';this.disabled=false;})" style="padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
     </div>
   </div>
   <div id="cevents" style="max-height:calc(100vh - 190px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px;"><div class="eld">Loading calendar...</div></div>
+  <div id="cweek" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px;max-height:calc(100vh - 190px);overflow-y:auto;"></div>
+  <div id="cmonth" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px;max-height:calc(100vh - 190px);overflow-y:auto;"></div>
   <div id="cal-vdrag" style="height:6px;cursor:row-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;border-radius:3px;margin:2px 0;" onmousedown="startCalDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:2px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
   <!-- Add Event Modal -->
   <div id="event-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
@@ -2148,6 +2155,117 @@ document.addEventListener('mouseup',function(){
 })();
 
 let cLoaded=false;
+let calView='list';
+let calWeekOffset=0;
+let calMonthOffset=0;
+let calAllEvents=[];
+function setCalView(v){
+  calView=v;
+  // Tab visuals
+  ['list','week','month'].forEach(function(x){
+    const b=document.getElementById('cal-view-'+x);
+    if(!b)return;
+    if(x===v){b.style.background='var(--accent-glow)';b.style.color='var(--accent)';b.style.fontWeight='600';}
+    else{b.style.background='transparent';b.style.color='var(--text-dim)';b.style.fontWeight='500';}
+  });
+  // Container visibility
+  document.getElementById('cevents').style.display=v==='list'?'block':'none';
+  document.getElementById('cweek').style.display=v==='week'?'block':'none';
+  document.getElementById('cmonth').style.display=v==='month'?'block':'none';
+  if(v==='week')renderCalWeek();
+  if(v==='month')renderCalMonth();
+}
+function renderCalWeek(){
+  const el=document.getElementById('cweek');
+  const now=new Date();
+  const start=new Date(now);
+  start.setDate(start.getDate()-start.getDay()+calWeekOffset*7);
+  start.setHours(0,0,0,0);
+  const days=[];
+  for(let i=0;i<7;i++){const d=new Date(start);d.setDate(d.getDate()+i);days.push(d);}
+  const end=new Date(start);end.setDate(end.getDate()+7);
+  const weekEvs=calAllEvents.filter(e=>{
+    const ed=new Date(e.start?.dateTime||0);
+    return ed>=start&&ed<end;
+  });
+  const weekLabel=days[0].toLocaleDateString('en-US',{month:'short',day:'numeric'})+' — '+days[6].toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);">
+    <button onclick="calWeekOffset--;renderCalWeek()" style="padding:5px 10px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;">‹ Prev</button>
+    <div style="font-size:13px;font-weight:600;">${weekLabel}</div>
+    <button onclick="calWeekOffset++;renderCalWeek()" style="padding:5px 10px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;">Next ›</button>
+  </div>`;
+  html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">';
+  const today=new Date();today.setHours(0,0,0,0);
+  days.forEach(function(d){
+    const isToday=d.getTime()===today.getTime();
+    const dayEvs=weekEvs.filter(e=>{
+      const ed=new Date(e.start?.dateTime||0);
+      return ed.toDateString()===d.toDateString();
+    }).sort((a,b)=>new Date(a.start?.dateTime||0)-new Date(b.start?.dateTime||0));
+    html+=`<div style="background:${isToday?'var(--accent-glow)':'var(--surface-2)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'};border-radius:7px;padding:8px;min-height:220px;">
+      <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">${d.toLocaleDateString('en-US',{weekday:'short'})}</div>
+      <div style="font-size:18px;font-weight:700;color:${isToday?'var(--accent)':'var(--text)'};margin-bottom:8px;">${d.getDate()}</div>`;
+    dayEvs.forEach(function(e){
+      const raw=e.start?.dateTime||'';
+      const hasTZ=/[Z]|[+-]\d{2}:\d{2}$/.test(raw);
+      const s=hasTZ?new Date(raw):new Date(raw+'Z');
+      const ts=s.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+      const srcColor=e._src==='Google'?'var(--green)':'var(--accent)';
+      html+=`<div style="font-size:10px;padding:4px 6px;margin-bottom:3px;background:var(--surface);border-left:2px solid ${srcColor};border-radius:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.subject||'')} at ${ts}">
+        <span style="color:var(--text-muted);font-family:var(--mono);">${ts}</span> ${esc((e.subject||'').substring(0,30))}
+      </div>`;
+    });
+    if(!dayEvs.length)html+='<div style="font-size:10px;color:var(--text-muted);font-style:italic;">—</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
+}
+function renderCalMonth(){
+  const el=document.getElementById('cmonth');
+  const now=new Date();
+  const viewDate=new Date(now.getFullYear(),now.getMonth()+calMonthOffset,1);
+  const monthStart=new Date(viewDate.getFullYear(),viewDate.getMonth(),1);
+  const monthEnd=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,0);
+  const firstDow=monthStart.getDay();
+  const daysInMonth=monthEnd.getDate();
+  const monthEvs=calAllEvents.filter(e=>{
+    const ed=new Date(e.start?.dateTime||0);
+    return ed>=monthStart&&ed<=new Date(monthEnd.getFullYear(),monthEnd.getMonth(),monthEnd.getDate(),23,59,59);
+  });
+  const monthLabel=viewDate.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);">
+    <button onclick="calMonthOffset--;renderCalMonth()" style="padding:5px 10px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;">‹ Prev</button>
+    <div style="font-size:14px;font-weight:600;">${monthLabel}</div>
+    <button onclick="calMonthOffset++;renderCalMonth()" style="padding:5px 10px;border-radius:5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;">Next ›</button>
+  </div>`;
+  const dowLabels=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;padding-bottom:6px;">';
+  dowLabels.forEach(function(l){html+=`<div style="padding:4px 6px;">${l}</div>`;});
+  html+='</div>';
+  html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">';
+  // Empty cells before day 1
+  for(let i=0;i<firstDow;i++)html+='<div></div>';
+  const today=new Date();today.setHours(0,0,0,0);
+  for(let d=1;d<=daysInMonth;d++){
+    const cellDate=new Date(viewDate.getFullYear(),viewDate.getMonth(),d);
+    const isToday=cellDate.getTime()===today.getTime();
+    const dayEvs=monthEvs.filter(e=>{
+      const ed=new Date(e.start?.dateTime||0);
+      return ed.toDateString()===cellDate.toDateString();
+    }).sort((a,b)=>new Date(a.start?.dateTime||0)-new Date(b.start?.dateTime||0));
+    html+=`<div style="background:${isToday?'var(--accent-glow)':'var(--surface-2)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'};border-radius:5px;padding:5px 6px;min-height:74px;overflow:hidden;">
+      <div style="font-size:11px;font-weight:600;color:${isToday?'var(--accent)':'var(--text)'};margin-bottom:3px;">${d}</div>`;
+    dayEvs.slice(0,3).forEach(function(e){
+      const srcColor=e._src==='Google'?'var(--green)':'var(--accent)';
+      html+=`<div style="font-size:9px;padding:2px 4px;margin-bottom:2px;background:var(--surface);border-left:2px solid ${srcColor};border-radius:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.subject||'')}">${esc((e.subject||'').substring(0,18))}</div>`;
+    });
+    if(dayEvs.length>3)html+=`<div style="font-size:9px;color:var(--text-muted);font-style:italic;">+${dayEvs.length-3} more</div>`;
+    html+='</div>';
+  }
+  html+='</div>';
+  el.innerHTML=html;
+}
 async function loadCal(){
   cLoaded=true;const el=document.getElementById('cevents');el.innerHTML='<div class="eld">Loading from M365 + Google Calendar...</div>';
   try{
@@ -2184,6 +2302,10 @@ async function loadCal(){
     });
     // Sort by start time
     allEvs.sort((a,b)=>new Date(a.start?.dateTime||0).getTime()-new Date(b.start?.dateTime||0).getTime());
+    calAllEvents=allEvs;
+    // If user is currently on week/month view, re-render with new data
+    if(calView==='week')renderCalWeek();
+    else if(calView==='month')renderCalMonth();
 
     if(!allEvs.length){
       const errMsg=errors.length?'<br><span style="font-size:11px;color:var(--red);font-family:var(--mono);">'+errors.join('<br>')+'</span>':'';
