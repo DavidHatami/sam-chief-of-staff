@@ -40,11 +40,10 @@ export default async (req: Request, context: Context) => {
     // ── LIST ALL TASKS ──
     if (req.method === "GET" && (path === "" || path === "/")) {
       const result = await store.list();
-      const tasks: Task[] = [];
-      for (const blob of result.blobs) {
-        const task = await store.get(blob.key, { type: "json" });
-        if (task) tasks.push(task);
-      }
+      // Fetch all task blobs in parallel instead of sequentially
+      const taskPromises = result.blobs.map(blob => store.get(blob.key, { type: "json" }));
+      const rawTasks = await Promise.all(taskPromises);
+      const tasks: Task[] = rawTasks.filter(t => t !== null && typeof t === "object") as Task[];
       // Sort: urgent first, then by createdAt descending
       const priorityOrder: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
       tasks.sort((a, b) => {
@@ -101,8 +100,12 @@ export default async (req: Request, context: Context) => {
     // ── DELETE TASK ──
     if (req.method === "DELETE" && idMatch) {
       const id = idMatch[1];
+      const existing = await store.get(id, { type: "json" });
+      if (!existing) {
+        return new Response(JSON.stringify({ error: "Task not found" }), { status: 404, headers });
+      }
       await store.delete(id);
-      return new Response(JSON.stringify({ deleted: true }), { headers });
+      return new Response(JSON.stringify({ deleted: true, id }), { headers });
     }
 
     return new Response(JSON.stringify({ error: "Unknown tasks endpoint" }), { status: 404, headers });
