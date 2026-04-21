@@ -66,20 +66,36 @@ export default async (req: Request, context: Context) => {
       }
       messages.push({ role: "user", content: prompt });
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": ANTHROPIC_KEY,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-opus-4-6",
-          max_tokens: 4096,
-          system: SYSTEM_PROMPT,
-          messages,
-        }),
-      });
+      // 22s ceiling to stay well under Netlify's 26s function budget.
+      // Without this, a slow API call propagates as a raw 502 instead of a graceful error.
+      const claudeAbort = new AbortController();
+      const claudeTimeout = setTimeout(() => claudeAbort.abort(), 22000);
+      let resp: Response;
+      try {
+        resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": ANTHROPIC_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "claude-opus-4-6",
+            max_tokens: 4096,
+            system: SYSTEM_PROMPT,
+            messages,
+          }),
+          signal: claudeAbort.signal,
+        });
+      } catch (e: any) {
+        clearTimeout(claudeTimeout);
+        const timedOut = e?.name === "AbortError";
+        return new Response(
+          JSON.stringify({ reply: timedOut ? "Claude took too long to respond. Try again or switch models." : "Claude request failed: " + String(e), model: "claude", error: true }),
+          { status: timedOut ? 504 : 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      clearTimeout(claudeTimeout);
 
       const data = await resp.json();
       const reply =
@@ -114,18 +130,33 @@ export default async (req: Request, context: Context) => {
       }
       messages.push({ role: "user", content: prompt });
 
-      const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-5.4",
-          messages,
-          max_completion_tokens: 4096,
-        }),
-      });
+      // 22s ceiling — matches Claude path (see claude block above for rationale)
+      const openaiAbort = new AbortController();
+      const openaiTimeout = setTimeout(() => openaiAbort.abort(), 22000);
+      let resp: Response;
+      try {
+        resp = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-5.4",
+            messages,
+            max_completion_tokens: 4096,
+          }),
+          signal: openaiAbort.signal,
+        });
+      } catch (e: any) {
+        clearTimeout(openaiTimeout);
+        const timedOut = e?.name === "AbortError";
+        return new Response(
+          JSON.stringify({ reply: timedOut ? "OpenAI took too long to respond. Try again or switch models." : "OpenAI request failed: " + String(e), model: "openai", error: true }),
+          { status: timedOut ? 504 : 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      clearTimeout(openaiTimeout);
 
       const data = await resp.json();
       const reply =
@@ -159,21 +190,36 @@ export default async (req: Request, context: Context) => {
       }
       contents.push({ role: "user", parts: [{ text: prompt }] });
 
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-            contents,
-            generationConfig: {
-              maxOutputTokens: 4096,
-              temperature: 0.7,
-            },
-          }),
-        }
-      );
+      // 22s ceiling — matches Claude + OpenAI paths
+      const geminiAbort = new AbortController();
+      const geminiTimeout = setTimeout(() => geminiAbort.abort(), 22000);
+      let resp: Response;
+      try {
+        resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+              contents,
+              generationConfig: {
+                maxOutputTokens: 4096,
+                temperature: 0.7,
+              },
+            }),
+            signal: geminiAbort.signal,
+          }
+        );
+      } catch (e: any) {
+        clearTimeout(geminiTimeout);
+        const timedOut = e?.name === "AbortError";
+        return new Response(
+          JSON.stringify({ reply: timedOut ? "Gemini took too long to respond. Try again or switch models." : "Gemini request failed: " + String(e), model: "gemini", error: true }),
+          { status: timedOut ? 504 : 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      clearTimeout(geminiTimeout);
 
       const data = await resp.json();
       const reply =
