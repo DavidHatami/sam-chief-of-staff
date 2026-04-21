@@ -198,10 +198,10 @@ export default async (req: Request, context: Context) => {
         return new Response(JSON.stringify({ error: "Council requires Anthropic API key." }), { status: 500, headers: { "Content-Type": "application/json" } });
       }
 
-      // Fire all available models simultaneously with an 18s ceiling per call —
-      // leaves ~8s headroom for synthesis within Netlify's 26s budget.
+      // Fire all available models simultaneously with a 14s ceiling per call —
+      // leaves ~12s headroom (10s synth + 2s slack) within Netlify's 26s budget.
       const modelAbort = new AbortController();
-      const modelTimeout = setTimeout(() => modelAbort.abort(), 18000);
+      const modelTimeout = setTimeout(() => modelAbort.abort(), 14000);
       const calls: Array<{ name: string; promise: Promise<Response> }> = [];
 
       // Claude
