@@ -4512,11 +4512,17 @@ function editTask(id){
   document.getElementById('tf-priority').value=t.priority||'normal';
   document.getElementById('tf-status').value=t.status||'todo';
   document.getElementById('tf-cat').value=t.category||'';
-  // If task has a custom category not in the dropdown, add it temporarily
+  // If task has a custom category not in the dropdown, add it once (and only once).
+  // Previously every open of the same task appended a duplicate option — dropdown
+  // accumulated dupes across open/close cycles and across different tasks with custom cats.
   const catSel=document.getElementById('tf-cat');
   if(t.category && catSel.value!==t.category){
-    const opt=document.createElement('option');opt.value=t.category;opt.textContent=t.category;
-    catSel.appendChild(opt);catSel.value=t.category;
+    const alreadyThere=Array.from(catSel.options).some(o=>o.value===t.category);
+    if(!alreadyThere){
+      const opt=document.createElement('option');opt.value=t.category;opt.textContent=t.category;
+      catSel.appendChild(opt);
+    }
+    catSel.value=t.category;
   }
   document.getElementById('tf-due').value=t.dueDate||'';
   document.getElementById('tf-notes').value=t.notes||'';
