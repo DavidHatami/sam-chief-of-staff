@@ -1671,6 +1671,8 @@ async function sendSAM(){
     const d=await r.json();
     const reply=d.reply||d.error||'No response.';
     samHistory.push({role:'assistant',content:reply});
+    // Cap samHistory at 20 entries — only last 10 sent to API, so keep a small buffer
+    if(samHistory.length>20)samHistory=samHistory.slice(-20);
 
     const typing=document.getElementById('sam-typing');
     if(typing){
@@ -3180,6 +3182,8 @@ async function sendAI(){
     if(typeof reply!=='string')reply=typeof reply==='object'?JSON.stringify(reply):String(reply);
     aiHistory.push({role:'user',content:text});
     aiHistory.push({role:'assistant',content:reply});
+    // Cap aiHistory at 20 entries — only last 10 sent to API, keep a small buffer
+    if(aiHistory.length>20)aiHistory=aiHistory.slice(-20);
     const typing=document.getElementById('ai-typing');
     if(typing){
       const formatted=reply.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');
