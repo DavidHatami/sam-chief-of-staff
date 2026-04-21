@@ -1935,9 +1935,11 @@ let cLoaded=false;
 async function loadCal(){
   cLoaded=true;const el=document.getElementById('cevents');el.innerHTML='<div class="eld">Loading from M365 + Google Calendar...</div>';
   try{
+    const now=new Date();const rangeEnd=new Date(now.getTime()+30*24*60*60*1000);
+    const startP=encodeURIComponent(now.toISOString());const endP=encodeURIComponent(rangeEnd.toISOString());
     const [m365Res,gcalRes]=await Promise.allSettled([
-      fetch('/api/m365/calendar'),
-      fetch('/api/gcal/events')
+      fetch('/api/m365/calendar?start='+startP+'&end='+endP),
+      fetch('/api/gcal/events?start='+startP+'&end='+endP)
     ]);
     let allEvs=[];
     // M365 events
@@ -1978,7 +1980,7 @@ async function loadCal(){
       const isZoom=loc.toLowerCase().includes('zoom')||(e.subject||'').toLowerCase().includes('zoom')||e.isOnlineMeeting;
       const organizer=e.organizer?.emailAddress?.name||e.organizer?.email||'';
       const durMin=(en&&!isNaN(en.getTime()))?Math.round((en.getTime()-s.getTime())/60000):0;
-      html+=`<div class="ce" onclick="this.classList.toggle('open')">
+      html+=`<div class="ce" onclick="this.classList.toggle('open')" data-eid="${esc(e.id||'')}" data-esrc="${e._src||''}">
         <div class="ct"><span>${timeDisplay}${srcBadge}</span><span class="ce-chevron">\u25B6</span></div>
         <div class="cn">${isZoom?'\uD83C\uDFA5 ':'\uD83D\uDCC5 '}${esc(e.subject||'(no title)')}</div>
         ${loc?'<div class="cl">\uD83D\uDCCD '+esc(typeof loc==='string'?loc:loc.displayName||'')+'</div>':''}
@@ -1986,7 +1988,8 @@ async function loadCal(){
           ${durMin>0?'<div class="ce-detail-row"><span>\u23F1</span><span>'+durMin+' minutes</span></div>':''}
           ${organizer?'<div class="ce-detail-row"><span>\uD83D\uDC64</span><span>'+esc(organizer)+'</span></div>':''}
           <div class="ce-detail-row"><span>\uD83D\uDCC2</span><span>${e._src} Calendar</span></div>
-          ${isZoom?'<button class="ce-action" onclick="event.stopPropagation();window.open(\'https://zoom.us\',\'_blank\')">\uD83C\uDFA5 Join Zoom</button>':''}
+          ${isZoom&&e.location?.displayName?'<button class="ce-action" onclick="event.stopPropagation();window.open(\''+esc(typeof e.location==='string'?e.location:e.location.displayName||'')+'\',\'_blank\')">\uD83C\uDFA5 Join Meeting</button>':''}
+          <button class="ce-action" style="background:var(--red);margin-left:6px;" onclick="event.stopPropagation();deleteCalEvent('${esc(e.id||'')}','${e._src||''}',this.closest('.ce'))">\uD83D\uDDD1 Delete</button>
         </div>
       </div>`;
     });
@@ -2081,6 +2084,35 @@ async function saveEvent(){
     }
     setTimeout(()=>{closeEventModal();btn.textContent='Create Event';btn.style.background='';btn.disabled=false;loadCal();fetchMCEvents();},1800);
   }catch(e){btn.textContent='Failed';btn.disabled=false;setTimeout(()=>{btn.textContent='Create Event';},2000);}
+}
+
+async function deleteCalEvent(eventId,source,cardEl){
+  if(!eventId)return;
+  if(!confirm('Delete this event from '+source+' Calendar?'))return;
+  const delBtn=cardEl?.querySelector('.ce-action[style*="red"]');
+  if(delBtn){delBtn.disabled=true;delBtn.textContent='Deleting...';}
+  try{
+    let url,opts={method:'DELETE'};
+    if(source==='Google'){
+      url='/api/gcal/event?id='+encodeURIComponent(eventId);
+    }else{
+      url='/api/m365/calendar?id='+encodeURIComponent(eventId);
+    }
+    const r=await fetch(url,opts);
+    const d=await r.json();
+    if(d.success){
+      if(cardEl)cardEl.style.opacity='0.3';
+      setTimeout(()=>{if(cardEl)cardEl.remove();},500);
+      // Also try to delete from the other calendar if dual-synced
+      const otherUrl=source==='Google'?'/api/m365/calendar':'/api/gcal/event';
+      // Refresh calendar views
+      setTimeout(()=>{cLoaded=false;loadCal();fetchMCEvents();},1000);
+    }else{
+      if(delBtn){delBtn.textContent='Error';setTimeout(()=>{delBtn.textContent='🗑 Delete';delBtn.disabled=false;},2000);}
+    }
+  }catch(e){
+    if(delBtn){delBtn.textContent='Failed';setTimeout(()=>{delBtn.textContent='🗑 Delete';delBtn.disabled=false;},2000);}
+  }
 }
 
 function openCalTask(){
@@ -2890,7 +2922,7 @@ async function prepForMeeting(){
     try{const tr=await fetch('/api/tasks/');const td=await tr.json();const relTasks=(td.tasks||[]).filter(t=>t.status!=='done'&&t.status!=='archived'&&t.status!=='canceled');if(relTasks.length){ctx+='\n\nACTIVE TASKS ('+relTasks.length+'): '+relTasks.slice(0,8).map(t=>t.title+' ['+t.priority+']').join('; ');}}catch(e){}
 
     // Get today's other events
-    try{const todayS=new Date();todayS.setHours(0,0,0,0);const todayE=new Date();todayE.setHours(23,59,59,999);const cr=await fetch('/api/m365/calendar?start='+encodeURIComponent(todayS.toISOString())+'&end='+encodeURIComponent(todayE.toISOString()));const cd=await cr.json();const evts=(cd.value||[]);if(evts.length){ctx+='\n\nTODAY\'S SCHEDULE ('+evts.length+' events): '+evts.map(e=>e.subject+' at '+new Date(e.start?.dateTime+'Z').toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})).join('; ');}}catch(e){}
+    try{const todayS=new Date();todayS.setHours(0,0,0,0);const todayE=new Date();todayE.setHours(23,59,59,999);const [cr365,crG]=await Promise.allSettled([fetch('/api/m365/calendar?start='+encodeURIComponent(todayS.toISOString())+'&end='+encodeURIComponent(todayE.toISOString())),fetch('/api/gcal/events?start='+encodeURIComponent(todayS.toISOString())+'&end='+encodeURIComponent(todayE.toISOString()))]);let evts=[];if(cr365.status==='fulfilled'){const cd=await cr365.value.json();(cd.value||[]).forEach(e=>evts.push(e));}if(crG.status==='fulfilled'){const cd=await crG.value.json();(cd.value||[]).forEach(e=>evts.push(e));}if(evts.length){ctx+='\n\nTODAY\'S SCHEDULE ('+evts.length+' events): '+evts.map(e=>{const raw=e.start?.dateTime||'';const hasTZ=/[Z]|[+-]\d{2}:\d{2}$/.test(raw);const d=hasTZ?new Date(raw):new Date(raw+'Z');return e.subject+' at '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});}).join('; ');}}catch(e){}
 
     ctx+='\n\nGenerate a concise pre-meeting brief: talking points, open questions, key context I should have in mind, and any action items to raise. Be specific and direct.';
 

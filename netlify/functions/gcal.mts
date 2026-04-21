@@ -87,6 +87,43 @@ export default async (req: Request, context: Context) => {
       return new Response(JSON.stringify({ value: items }), { headers });
     }
 
+    // ── DELETE EVENT ──
+    if ((path === "/event" || path === "/event/") && req.method === "DELETE") {
+      const eventId = url.searchParams.get("id");
+      if (!eventId) return new Response(JSON.stringify({ error: "Missing event id" }), { status: 400, headers });
+      const resp = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!resp.ok && resp.status !== 204) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
+      }
+      return new Response(JSON.stringify({ success: true, message: "Event deleted from Google Calendar" }), { headers });
+    }
+
+    // ── UPDATE EVENT ──
+    if ((path === "/event" || path === "/event/") && req.method === "PATCH") {
+      const body = await req.json();
+      const { id: eventId, subject, start, end, location } = body;
+      if (!eventId) return new Response(JSON.stringify({ error: "Missing event id" }), { status: 400, headers });
+      const update: Record<string, unknown> = {};
+      if (subject) update.summary = subject;
+      if (start) update.start = { dateTime: start, timeZone: "America/New_York" };
+      if (end) update.end = { dateTime: end, timeZone: "America/New_York" };
+      if (location !== undefined) update.location = location;
+      const resp = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+        { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(update) }
+      );
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
+      }
+      const data = await resp.json();
+      return new Response(JSON.stringify({ success: true, event: { id: data.id, summary: data.summary } }), { headers });
+    }
+
     // ── CREATE EVENT ──
     if ((path === "/event" || path === "/event/") && req.method === "POST") {
       const body = await req.json();

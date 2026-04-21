@@ -182,6 +182,44 @@ export default async (req: Request, context: Context) => {
       });
     }
 
+    // ── DELETE CALENDAR EVENT ──
+    if (path === "/calendar" && req.method === "DELETE") {
+      const eventId = url.searchParams.get("id");
+      if (!eventId) return new Response(JSON.stringify({ error: "Missing event id" }), { status: 400, headers: { "Content-Type": "application/json" } });
+      const resp = await fetch(`${graphBase}/events/${eventId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok && resp.status !== 204) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ success: true, message: "Event deleted from M365" }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    // ── UPDATE CALENDAR EVENT ──
+    if (path === "/calendar" && req.method === "PATCH") {
+      const body = await req.json();
+      const { id: eventId, subject, start, end, location } = body;
+      if (!eventId) return new Response(JSON.stringify({ error: "Missing event id" }), { status: 400, headers: { "Content-Type": "application/json" } });
+      const update: Record<string, unknown> = {};
+      if (subject) update.subject = subject;
+      if (start) update.start = { dateTime: start, timeZone: "Eastern Standard Time" };
+      if (end) update.end = { dateTime: end, timeZone: "Eastern Standard Time" };
+      if (location !== undefined) update.location = { displayName: location };
+      const resp = await fetch(`${graphBase}/events/${eventId}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(update),
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers: { "Content-Type": "application/json" } });
+      }
+      const data = await resp.json();
+      return new Response(JSON.stringify({ success: true, event: { id: data.id, subject: data.subject } }), { headers: { "Content-Type": "application/json" } });
+    }
+
     // ── READ M365 CALENDAR ──
     if (path === "/calendar" && req.method === "GET") {
       const start = url.searchParams.get("start") || new Date().toISOString();
