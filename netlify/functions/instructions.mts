@@ -230,7 +230,14 @@ Compressed version (aim for 40-60% reduction):`;
       const enabled = all.filter(i => i.enabled && i.content.length > 50);
       const results: Array<{ id: string; title: string; originalChars: number; compressedChars: number; savings: string }> = [];
 
-      for (const inst of enabled) {
+      // Parallelize with per-call 8s timeout. Previous implementation ran sequentially —
+      // for 20 instructions * 2-3s each, it blew through Netlify's 26s budget and
+      // saveAll at the end meant partial progress was LOST if function died mid-loop.
+      // Now: fire all in parallel, each with its own AbortController, then save once at the end
+      // (still atomic because Promise.allSettled waits for all to either succeed or fail within their individual timeout).
+      const compressPromises = enabled.map(async (inst) => {
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), 8000);
         try {
           const gResp = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
@@ -241,8 +248,10 @@ Compressed version (aim for 40-60% reduction):`;
                 contents: [{ role: "user", parts: [{ text: `Compress this instruction to minimum characters while preserving 100% of meaning, names, numbers, rules. Telegraphic style. No filler. Keep specifics.\n\nOriginal:\n${inst.content}\n\nCompressed:` }] }],
                 generationConfig: { maxOutputTokens: 512, temperature: 0.2 },
               }),
+              signal: abort.signal,
             }
           );
+          clearTimeout(timer);
           if (gResp.ok) {
             const gData = await gResp.json();
             const compressed = gData.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("").trim() || "";
@@ -251,10 +260,16 @@ Compressed version (aim for 40-60% reduction):`;
               inst.content = compressed;
               inst.updated = new Date().toISOString();
               const savings = Math.round((1 - compressed.length / origLen) * 100);
-              results.push({ id: inst.id, title: inst.title, originalChars: origLen, compressedChars: compressed.length, savings: savings + "%" });
+              return { id: inst.id, title: inst.title, originalChars: origLen, compressedChars: compressed.length, savings: savings + "%" };
             }
           }
-        } catch (e) { /* skip failed ones */ }
+        } catch (e) { /* timeout or network error — skip */ }
+        finally { clearTimeout(timer); }
+        return null;
+      });
+      const settled = await Promise.allSettled(compressPromises);
+      for (const r of settled) {
+        if (r.status === "fulfilled" && r.value) results.push(r.value);
       }
 
       await saveAll(all);
