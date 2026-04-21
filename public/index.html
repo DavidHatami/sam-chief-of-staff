@@ -2556,7 +2556,8 @@ async function sendAI(){
     }
     const r=await fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:aiModel,prompt:fullPrompt,history:aiHistory.slice(-10)})});
     const d=await r.json();
-    const reply=d.reply||d.error||'No response.';
+    let reply=d.reply||d.error||'No response.';
+    if(typeof reply!=='string')reply=typeof reply==='object'?JSON.stringify(reply):String(reply);
     aiHistory.push({role:'user',content:text});
     aiHistory.push({role:'assistant',content:reply});
     const typing=document.getElementById('ai-typing');
