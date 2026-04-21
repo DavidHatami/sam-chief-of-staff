@@ -21,7 +21,7 @@ async function getImapClient(): Promise<ImapFlow> {
 
   if (!email || !appPassword) {
     throw new Error(
-      "Yahoo credentials not configured. Set YAHOO_EMAIL and YAHOO_APP_PASSWORD in Netlify env vars. Generate an App Password at https://login.yahoo.com/account/security/app-passwords"
+      "Yahoo credentials not configured. Set YAHOO_EMAIL and YAHOO_APP_PASSWORD in Netlify env vars."
     );
   }
 
@@ -31,6 +31,9 @@ async function getImapClient(): Promise<ImapFlow> {
     secure: true,
     auth: { user: email, pass: appPassword },
     logger: false,
+    greetingTimeout: 5000,
+    socketTimeout: 8000,
+    emitLogs: false,
   });
 
   await client.connect();
@@ -68,7 +71,7 @@ export default async (req: Request, context: Context) => {
     if (path === "/mail" && req.method === "GET") {
       const msgId = url.searchParams.get("id");
       const folder = url.searchParams.get("folder") || "inbox";
-      const top = parseInt(url.searchParams.get("top") || "30");
+      const top = parseInt(url.searchParams.get("top") || "15");
 
       client = await getImapClient();
 
@@ -140,13 +143,11 @@ export default async (req: Request, context: Context) => {
         const total = status.messages || 0;
         const startSeq = Math.max(1, total - top + 1);
 
-        // Fetch in reverse order (newest first)
+        // Fetch in reverse order (newest first) — envelope+flags only, no body
         for await (const msg of client.fetch(`${startSeq}:*`, {
           uid: true,
           envelope: true,
           flags: true,
-          bodyStructure: true,
-          source: { maxBytes: 500 }, // snippet only
         })) {
           const env = msg.envelope;
           const fromAddr = env.from?.[0]?.address || "";
