@@ -16,9 +16,11 @@ interface Task {
   title: string;
   description?: string;
   priority: "urgent" | "high" | "normal" | "low";
-  status: "todo" | "in-progress" | "done" | "canceled";
+  status: "todo" | "in-progress" | "done" | "canceled" | "review" | "archived";
   category?: string;
   dueDate?: string;
+  notes?: string;
+  subtasks?: { title: string; done: boolean }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -67,6 +69,8 @@ export default async (req: Request, context: Context) => {
         status: body.status || "todo",
         category: body.category || "",
         dueDate: body.dueDate || "",
+        notes: body.notes || "",
+        subtasks: Array.isArray(body.subtasks) ? body.subtasks : [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

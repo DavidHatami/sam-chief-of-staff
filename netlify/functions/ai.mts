@@ -291,12 +291,13 @@ ${truncated.map(r => `── ${r.model} ──\n${r.reply}`).join("\n\n")}
 Synthesize now (be concise, no preamble):`;
 
       try {
+        // Use Sonnet for synthesis — 3-5x faster than Opus, plenty smart for merging
         const synthResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({
-            model: "claude-opus-4-6",
-            max_tokens: 2048,
+            model: "claude-sonnet-4-6",
+            max_tokens: 1024,
             system: "You are SAM's Council Synthesizer. Combine multiple AI perspectives into one superior answer. Be direct and concise. Credit models by name when they contribute unique insights. End with a brief [Council Notes] line.",
             messages: [{ role: "user", content: synthesisPrompt }],
           }),
