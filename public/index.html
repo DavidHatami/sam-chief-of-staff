@@ -3918,6 +3918,8 @@ function renderKanban(){
 }
 
 function renderTasks(){
+  // Dispatch: if currently in kanban mode, render that instead so search/sort/edit/delete all flow through
+  if(taskView==='kanban'){renderKanban();return;}
   const list=document.getElementById('tlist');
   let tasks=[...allTasks];
   if(taskFilter==='urgent') tasks=tasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='archived'&&t.status!=='canceled');
