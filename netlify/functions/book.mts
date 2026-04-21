@@ -194,12 +194,22 @@ export default async (req: Request, context: Context) => {
     } catch (e) { results.email = { success: false, error: String(e) }; }
 
     const successCount = Object.values(results).filter((r: any) => r?.success).length;
+    // Don't lie about outcome — if nothing succeeded, success=false so the frontend shows an error
+    // instead of a cheerful "Booking confirmed — 0/5 systems updated"
+    const anySuccess = successCount > 0;
+    const allSuccess = successCount === 5 || (successCount === 4 && !Netlify.env.get("RESEND_API_KEY"));
+    const message = allSuccess
+      ? `Booking confirmed — all systems updated`
+      : anySuccess
+        ? `Booking partial — ${successCount}/5 systems updated. Check results for details.`
+        : `Booking failed — no systems updated. Check results for details.`;
     return new Response(JSON.stringify({
-      success: true,
-      message: `Booking confirmed — ${successCount}/5 systems updated`,
+      success: anySuccess,
+      partial: anySuccess && !allSuccess,
+      message,
       meetingTitle, date: dateLabel, time: timeLabel, duration: dur,
       zoomJoinUrl: zoomJoinUrl || null, zoomPassword: zoomPassword || null, results,
-    }), { headers });
+    }), { status: anySuccess ? 200 : 500, headers });
 
   } catch (err) {
     return new Response(JSON.stringify({ error: "Booking failed: " + String(err), results }), { status: 500, headers });
