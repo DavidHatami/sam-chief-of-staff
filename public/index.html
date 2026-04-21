@@ -1180,6 +1180,17 @@ function attrJsArg(s){
   const json=JSON.stringify(String(s==null?'':s));
   return json.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+// Brief bottom-right toast for transient feedback (errors, confirmations).
+// type: 'err' (red), 'ok' (green), or 'info' (accent).
+function showToast(msg,type){
+  const t=document.createElement('div');
+  const bg=type==='err'?'linear-gradient(135deg,var(--red),#991b1b)':type==='ok'?'linear-gradient(135deg,var(--green),#047857)':'linear-gradient(135deg,var(--accent),#7c3aed)';
+  t.style.cssText='position:fixed;bottom:24px;right:24px;z-index:10000;padding:12px 18px;background:'+bg+';color:#fff;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);font-family:var(--font);font-size:13px;font-weight:500;max-width:340px;cursor:pointer;';
+  t.textContent=String(msg||'');
+  t.onclick=function(){t.remove();};
+  document.body.appendChild(t);
+  setTimeout(()=>{if(t.parentNode)t.remove();},5000);
+}
 
 // ── GLOBAL SEARCH ──
 let gsTimer=null;
@@ -3965,11 +3976,19 @@ async function deleteMeeting(){
   if(!selectedMeeting)return;
   if(!confirm('Delete this Zoom meeting?'))return;
   try{
-    await fetch('/api/zoom/meetings?id='+selectedMeeting.id,{method:'DELETE'});
+    const r=await fetch('/api/zoom/meetings?id='+selectedMeeting.id,{method:'DELETE'});
+    if(!r.ok){
+      const errText=await r.text().catch(()=>'');
+      showToast('Delete failed: '+(errText.substring(0,100)||'server error'),'err');
+      return;
+    }
     document.getElementById('zoom-detail').style.display='none';
     selectedMeeting=null;
     loadZoomMeetings();
-  }catch(e){}
+    showToast('Meeting deleted','ok');
+  }catch(e){
+    showToast('Delete failed: '+(e.message||'network error'),'err');
+  }
 }
 
 async function prepForMeeting(){
@@ -4145,9 +4164,21 @@ async function deleteRecording(meetingId){
   if(!confirm('Delete this recording from Zoom cloud?'))return;
   try{
     const r=await fetch('/api/zoom/recordings?id='+meetingId,{method:'DELETE'});
-    const d=await r.json();
-    if(d.success)loadZoomRecordings();
-  }catch(e){}
+    if(!r.ok){
+      const errText=await r.text().catch(()=>'');
+      showToast('Delete failed: '+(errText.substring(0,100)||'server error'),'err');
+      return;
+    }
+    const d=await r.json().catch(()=>({}));
+    if(d.success||d.success===undefined){
+      loadZoomRecordings();
+      showToast('Recording deleted','ok');
+    }else{
+      showToast('Delete failed: '+(d.error||'unknown'),'err');
+    }
+  }catch(e){
+    showToast('Delete failed: '+(e.message||'network error'),'err');
+  }
 }
 
 // ── ZOOM MEETING CREATION ──
