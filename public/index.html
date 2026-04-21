@@ -2577,6 +2577,14 @@ function setCalView(v){
   if(v==='week')renderCalWeek();
   if(v==='month')renderCalMonth();
 }
+// Helper: parse event date with proper timezone handling.
+// M365 Graph API returns dateTime without TZ indicator; Google Calendar includes Z or offset.
+// Without this normalization, M365 events land on wrong day in week/month views (see bug #XX fix).
+function _parseEventDate(raw){
+  if(!raw)return new Date(0);
+  const hasTZ=/[Z]|[+-]\d{2}:\d{2}$/.test(raw);
+  return hasTZ?new Date(raw):new Date(raw+'Z');
+}
 function renderCalWeek(){
   const el=document.getElementById('cweek');
   const now=new Date();
@@ -2587,7 +2595,7 @@ function renderCalWeek(){
   for(let i=0;i<7;i++){const d=new Date(start);d.setDate(d.getDate()+i);days.push(d);}
   const end=new Date(start);end.setDate(end.getDate()+7);
   const weekEvs=calAllEvents.filter(e=>{
-    const ed=new Date(e.start?.dateTime||0);
+    const ed=_parseEventDate(e.start?.dateTime);
     return ed>=start&&ed<end;
   });
   const weekLabel=days[0].toLocaleDateString('en-US',{month:'short',day:'numeric'})+' — '+days[6].toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
@@ -2601,16 +2609,14 @@ function renderCalWeek(){
   days.forEach(function(d){
     const isToday=d.getTime()===today.getTime();
     const dayEvs=weekEvs.filter(e=>{
-      const ed=new Date(e.start?.dateTime||0);
+      const ed=_parseEventDate(e.start?.dateTime);
       return ed.toDateString()===d.toDateString();
-    }).sort((a,b)=>new Date(a.start?.dateTime||0)-new Date(b.start?.dateTime||0));
+    }).sort((a,b)=>_parseEventDate(a.start?.dateTime)-_parseEventDate(b.start?.dateTime));
     html+=`<div style="background:${isToday?'var(--accent-glow)':'var(--surface-2)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'};border-radius:7px;padding:8px;min-height:220px;">
       <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:600;">${d.toLocaleDateString('en-US',{weekday:'short'})}</div>
       <div style="font-size:18px;font-weight:700;color:${isToday?'var(--accent)':'var(--text)'};margin-bottom:8px;">${d.getDate()}</div>`;
     dayEvs.forEach(function(e){
-      const raw=e.start?.dateTime||'';
-      const hasTZ=/[Z]|[+-]\d{2}:\d{2}$/.test(raw);
-      const s=hasTZ?new Date(raw):new Date(raw+'Z');
+      const s=_parseEventDate(e.start?.dateTime);
       const ts=s.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
       const srcColor=e._src==='Google'?'var(--green)':'var(--accent)';
       html+=`<div style="font-size:10px;padding:4px 6px;margin-bottom:3px;background:var(--surface);border-left:2px solid ${srcColor};border-radius:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.subject||'')} at ${ts}">
@@ -2632,7 +2638,7 @@ function renderCalMonth(){
   const firstDow=monthStart.getDay();
   const daysInMonth=monthEnd.getDate();
   const monthEvs=calAllEvents.filter(e=>{
-    const ed=new Date(e.start?.dateTime||0);
+    const ed=_parseEventDate(e.start?.dateTime);
     return ed>=monthStart&&ed<=new Date(monthEnd.getFullYear(),monthEnd.getMonth(),monthEnd.getDate(),23,59,59);
   });
   const monthLabel=viewDate.toLocaleDateString('en-US',{month:'long',year:'numeric'});
@@ -2653,9 +2659,9 @@ function renderCalMonth(){
     const cellDate=new Date(viewDate.getFullYear(),viewDate.getMonth(),d);
     const isToday=cellDate.getTime()===today.getTime();
     const dayEvs=monthEvs.filter(e=>{
-      const ed=new Date(e.start?.dateTime||0);
+      const ed=_parseEventDate(e.start?.dateTime);
       return ed.toDateString()===cellDate.toDateString();
-    }).sort((a,b)=>new Date(a.start?.dateTime||0)-new Date(b.start?.dateTime||0));
+    }).sort((a,b)=>_parseEventDate(a.start?.dateTime)-_parseEventDate(b.start?.dateTime));
     html+=`<div style="background:${isToday?'var(--accent-glow)':'var(--surface-2)'};border:1px solid ${isToday?'var(--accent)':'var(--border)'};border-radius:5px;padding:5px 6px;min-height:74px;overflow:hidden;">
       <div style="font-size:11px;font-weight:600;color:${isToday?'var(--accent)':'var(--text)'};margin-bottom:3px;">${d}</div>`;
     dayEvs.slice(0,3).forEach(function(e){
