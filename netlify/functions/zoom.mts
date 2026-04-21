@@ -357,12 +357,7 @@ export default async (req: Request, context: Context) => {
     if (path === "/past" && req.method === "GET") {
       const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
       const to = new Date().toISOString().split("T")[0];
-      const resp = await zoomAPI(`/users/me/meetings?type=previous_meetings&page_size=30&from=${from}&to=${to}`, token);
-      if (!resp.ok) {
-        const err = await resp.text();
-        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
-      }
-      const data = await resp.json();
+      const data = await zoomFetch(`/users/me/meetings?type=previous_meetings&page_size=30&from=${from}&to=${to}`, token);
       return new Response(JSON.stringify({ meetings: data.meetings || [] }), { headers });
     }
 
@@ -370,12 +365,7 @@ export default async (req: Request, context: Context) => {
     if (path === "/participants" && req.method === "GET") {
       const meetingId = url.searchParams.get("id");
       if (!meetingId) return new Response(JSON.stringify({ error: "Meeting ID required" }), { status: 400, headers });
-      const resp = await zoomAPI(`/past_meetings/${meetingId}/participants?page_size=50`, token);
-      if (!resp.ok) {
-        const err = await resp.text();
-        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
-      }
-      const data = await resp.json();
+      const data = await zoomFetch(`/past_meetings/${meetingId}/participants?page_size=50`, token);
       return new Response(JSON.stringify({ participants: data.participants || [], total: data.total_records || 0 }), { headers });
     }
 
@@ -383,7 +373,7 @@ export default async (req: Request, context: Context) => {
     if (path === "/instant" && req.method === "POST") {
       const body = await req.json().catch(() => ({}));
       const topic = (body as any).topic || "Instant Meeting";
-      const resp = await zoomAPI("/users/me/meetings", token, {
+      const data = await zoomFetch("/users/me/meetings", token, {
         method: "POST",
         body: JSON.stringify({
           topic,
@@ -391,11 +381,6 @@ export default async (req: Request, context: Context) => {
           settings: { join_before_host: true, auto_recording: "cloud", waiting_room: false },
         }),
       });
-      if (!resp.ok) {
-        const err = await resp.text();
-        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
-      }
-      const data = await resp.json();
       return new Response(JSON.stringify({
         success: true,
         meeting: { id: data.id, topic: data.topic, join_url: data.join_url, start_url: data.start_url, password: data.password },
@@ -406,9 +391,7 @@ export default async (req: Request, context: Context) => {
     if (path === "/view-transcript" && req.method === "GET") {
       const meetingId = url.searchParams.get("id");
       if (!meetingId) return new Response(JSON.stringify({ error: "Meeting ID required" }), { status: 400, headers });
-      const resp = await zoomAPI(`/meetings/${meetingId}/recordings`, token);
-      if (!resp.ok) return new Response(JSON.stringify({ error: "Recording not found" }), { status: 404, headers });
-      const data = await resp.json();
+      const data = await zoomFetch(`/meetings/${meetingId}/recordings`, token);
       const transcriptFile = data.recording_files?.find(
         (f: any) => f.file_type === "TRANSCRIPT" || f.recording_type === "audio_transcript"
       );
