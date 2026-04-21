@@ -284,7 +284,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 </div>
 <div class="main" id="main-content" style="padding-top:0;">
 <div id="p-dash" class="page active">
-  <div class="hdr"><div><h1 id="greeting"></h1><p class="hdr-sub">Secret Agent Man has everything under control.</p></div><div class="hdr-time"><div class="t" id="clock"></div><div class="d" id="datestr"></div></div></div>
+  <div class="hdr"><div><h1 id="greeting"></h1><p class="hdr-sub">Secret Agent Man has everything under control.</p></div><div class="hdr-time" style="cursor:pointer;" onclick="openAlarmModal()" title="Click to set an alarm"><div class="t" id="clock"></div><div class="d" id="datestr"></div><div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-top:2px;">⏰ alarms</div></div></div>
   <div style="display:grid;grid-template-columns:1fr 260px;gap:12px;margin-bottom:14px;">
     <div class="stats" style="margin-bottom:0;grid-template-columns:repeat(5,1fr);">
       <div class="st" style="cursor:pointer;" onclick="go('calendar',document.querySelectorAll('.ni')[2])"><div class="l">Today's Events</div><div class="v" id="sev">—</div><div class="s">Across all calendars</div></div>
@@ -970,7 +970,110 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 <script>
 function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
-function tick(){const n=new Date(),h=n.getHours(),g=h<12?'Morning':h<17?'Afternoon':'Evening';document.getElementById('greeting').textContent='Good '+g+', Dr. Hatami';document.getElementById('clock').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/New_York'});document.getElementById('datestr').textContent=n.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});}
+// ── CLOCK + ALARM ──
+function tick(){
+  const n=new Date(),h=n.getHours(),g=h<12?'Morning':h<17?'Afternoon':'Evening';
+  document.getElementById('greeting').textContent='Good '+g+', Dr. Hatami';
+  document.getElementById('clock').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/New_York'});
+  document.getElementById('datestr').textContent=n.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
+  checkAlarms(n);
+}
+function getAlarms(){try{return JSON.parse(localStorage.getItem('sam-alarms')||'[]');}catch(e){return [];}}
+function saveAlarms(a){try{localStorage.setItem('sam-alarms',JSON.stringify(a));}catch(e){}}
+function checkAlarms(now){
+  const alarms=getAlarms();
+  let changed=false;
+  alarms.forEach(function(a){
+    if(a.triggered)return;
+    // Alarm stored as ISO in ET; trigger when now >= alarm time (within 60s window)
+    const at=new Date(a.time).getTime();
+    const diff=now.getTime()-at;
+    if(diff>=0&&diff<60000){
+      a.triggered=true;changed=true;
+      fireAlarm(a);
+    }
+  });
+  if(changed)saveAlarms(alarms);
+}
+function fireAlarm(a){
+  // Browser notification (if permission granted) + audio beep + on-screen toast
+  try{
+    if('Notification' in window&&Notification.permission==='granted'){
+      new Notification('⏰ '+(a.label||'Alarm'),{body:new Date(a.time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}),tag:'sam-alarm-'+a.id});
+    }
+  }catch(e){}
+  try{
+    const ac=new (window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator();const g=ac.createGain();
+    o.connect(g);g.connect(ac.destination);
+    o.frequency.value=880;g.gain.value=0.15;
+    o.start();setTimeout(()=>{o.stop();ac.close();},1200);
+  }catch(e){}
+  // Toast
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:24px;right:24px;z-index:9999;padding:14px 18px;background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,0.5);font-family:var(--font);font-weight:600;max-width:320px;cursor:pointer;';
+  t.innerHTML='⏰ '+(a.label?a.label:'Alarm').replace(/</g,'&lt;')+'<div style="font-size:11px;font-weight:400;opacity:0.85;margin-top:3px;font-family:var(--mono);">'+new Date(a.time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+' — click to dismiss</div>';
+  t.onclick=function(){t.remove();};
+  document.body.appendChild(t);
+  setTimeout(()=>{if(t.parentNode)t.remove();},20000);
+}
+function openAlarmModal(){
+  // Request notification permission on first use
+  try{if('Notification' in window&&Notification.permission==='default')Notification.requestPermission();}catch(e){}
+  const existing=getAlarms().filter(a=>!a.triggered);
+  const now=new Date();
+  const defTime=new Date(now.getTime()+15*60000);
+  const defHHMM=String(defTime.getHours()).padStart(2,'0')+':'+String(defTime.getMinutes()).padStart(2,'0');
+  let listHtml='';
+  existing.forEach(function(a){
+    const at=new Date(a.time);
+    listHtml+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;">
+      <div><div style="font-size:13px;font-weight:500;">${a.label?String(a.label).replace(/</g,'&lt;'):'Alarm'}</div><div style="font-size:11px;color:var(--text-muted);font-family:var(--mono);">${at.toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</div></div>
+      <button onclick="deleteAlarm('${a.id}')" style="padding:4px 10px;border-radius:5px;background:var(--red-dim);border:1px solid var(--red);color:var(--red);font-size:11px;cursor:pointer;">Remove</button>
+    </div>`;
+  });
+  if(!listHtml)listHtml='<div style="font-size:12px;color:var(--text-muted);font-style:italic;padding:4px;">No active alarms</div>';
+  const modal=document.createElement('div');
+  modal.id='alarm-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;width:100%;max-width:420px;margin:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <h3 style="font-size:15px;font-weight:600;">⏰ Alarms</h3>
+      <button onclick="document.getElementById('alarm-modal').remove()" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 120px;gap:8px;margin-bottom:10px;">
+      <input id="alarm-label" type="text" placeholder="Label (optional)" style="padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+      <input id="alarm-time" type="time" value="${defHHMM}" style="padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+      <input id="alarm-date" type="date" value="${now.toISOString().split('T')[0]}" style="flex:1;padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+      <button onclick="addAlarm()" style="padding:8px 18px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;">+ Add Alarm</button>
+    </div>
+    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:8px;">Active</div>
+    ${listHtml}
+  </div>`;
+  modal.addEventListener('click',function(e){if(e.target===modal)modal.remove();});
+  document.body.appendChild(modal);
+}
+function addAlarm(){
+  const label=document.getElementById('alarm-label').value.trim();
+  const date=document.getElementById('alarm-date').value;
+  const time=document.getElementById('alarm-time').value;
+  if(!date||!time)return;
+  const dt=new Date(date+'T'+time+':00');
+  if(isNaN(dt.getTime())||dt<new Date()){alert('Pick a future time.');return;}
+  const alarms=getAlarms();
+  alarms.push({id:Date.now().toString(36),label:label||'Alarm',time:dt.toISOString(),triggered:false});
+  saveAlarms(alarms);
+  document.getElementById('alarm-modal').remove();
+  openAlarmModal();
+}
+function deleteAlarm(id){
+  const alarms=getAlarms().filter(a=>a.id!==id);
+  saveAlarms(alarms);
+  document.getElementById('alarm-modal').remove();
+  openAlarmModal();
+}
 setInterval(tick,1000);tick();
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 
@@ -2766,6 +2869,25 @@ let mcY,mcM,mcEventDays=new Set();
 (function(){const n=new Date();mcY=n.getFullYear();mcM=n.getMonth();renderMC();fetchMCEvents();})();
 function mcMo(d){mcM+=d;if(mcM>11){mcM=0;mcY++;}if(mcM<0){mcM=11;mcY--;}renderMC();fetchMCEvents();}
 async function fetchMCEvents(){
+  // Reuse Calendar page's cached events if they cover this month — avoids redundant API call
+  if(Array.isArray(calAllEvents)&&calAllEvents.length){
+    mcEventDays=new Set();
+    const monthStart=new Date(mcY,mcM,1).getTime();
+    const monthEnd=new Date(mcY,mcM+1,0,23,59,59).getTime();
+    let covered=false;
+    calAllEvents.forEach(function(ev){
+      const raw=ev.start?.dateTime||'';
+      if(!raw)return;
+      const hasTZ=/[Z]|[+-]\d{2}:\d{2}$/.test(raw);
+      const dt=hasTZ?new Date(raw):new Date(raw+'Z');
+      const t=dt.getTime();
+      if(t>=monthStart&&t<=monthEnd){
+        covered=true;
+        if(dt.getFullYear()===mcY&&dt.getMonth()===mcM)mcEventDays.add(dt.getDate());
+      }
+    });
+    if(covered){renderMC();return;}
+  }
   try{
     const s=new Date(mcY,mcM,1).toISOString();
     const e=new Date(mcY,mcM+1,0,23,59,59).toISOString();
@@ -2799,8 +2921,24 @@ function renderMC(){
     const isToday=dt.getTime()===td.getTime();
     const hasEvent=mcEventDays.has(d);
     e.className='mcal-d av'+(isToday?' today':'')+(hasEvent?' has-ev':'');
-    if(hasEvent)e.style.cursor='pointer';
-    if(hasEvent)e.onclick=function(){go('calendar',document.querySelectorAll('.ni')[2]);};
+    e.style.cursor='pointer';
+    e.onclick=function(){
+      // Navigate to Calendar, switch to Week view, position on this day
+      go('calendar',document.querySelectorAll('.ni')[2]);
+      const clickedDate=new Date(mcY,mcM,d);
+      clickedDate.setHours(0,0,0,0);
+      const todayRef=new Date();todayRef.setHours(0,0,0,0);
+      // Calendar week offset = weeks from this week's Sunday to clicked day's Sunday
+      const thisSun=new Date(todayRef);thisSun.setDate(thisSun.getDate()-thisSun.getDay());
+      const clickedSun=new Date(clickedDate);clickedSun.setDate(clickedSun.getDate()-clickedSun.getDay());
+      const weeksDiff=Math.round((clickedSun-thisSun)/(7*86400000));
+      setTimeout(function(){
+        if(typeof setCalView==='function'){
+          calWeekOffset=weeksDiff;
+          setCalView('week');
+        }
+      },80);
+    };
     g.appendChild(e);
   }
 }
