@@ -84,7 +84,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 .ai-mod{padding:8px 16px;border-radius:8px;background:var(--surface);border:2px solid var(--border);cursor:pointer;font-size:12px;font-weight:600;transition:all 0.15s;display:flex;align-items:center;gap:6px;}
 .ai-mod:hover{border-color:var(--accent);}.ai-mod.active{border-color:var(--accent);background:var(--accent-glow);color:var(--accent);}
 .ai-mod .mod-dot{width:8px;height:8px;border-radius:50%;}
-.ai-chat{background:var(--surface);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:400px;}
+.ai-chat{background:var(--surface);border:1px solid var(--border);border-radius:9px;display:flex;flex-direction:column;height:calc(100vh - 155px);min-height:400px;}
 .ai-msgs{flex:1;overflow-y:auto;padding:20px;}
 .ai-msg{margin-bottom:16px;display:flex;gap:10px;align-items:flex-start;}
 .ai-msg .av{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;color:#fff;}
@@ -154,10 +154,10 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   #dash-left,#dash-right{flex:1 1 auto!important;max-width:100%!important;min-width:0!important;border-radius:10px!important;border:1px solid var(--border)!important;}
   #dash-drag{display:none!important;}
   #email-split{flex-direction:column!important;}
-  #email-left{flex:0 0 auto!important;max-width:100%!important;height:300px!important;border-radius:10px 10px 0 0!important;}
+  #email-left{flex:0 0 auto!important;max-width:100%!important;height:300px!important;border-radius:9px 9px 0 0!important;}
   #email-drag{display:none!important;}
-  #email-right{height:auto!important;max-height:50vh!important;border-radius:0 0 10px 10px!important;}
-  .ai-chat{height:calc(100vh - 280px)!important;min-height:300px!important;}
+  #email-right{height:auto!important;max-height:50vh!important;border-radius:0 0 9px 9px!important;}
+  .ai-chat{height:calc(100vh - 255px)!important;min-height:300px!important;}
 }
 
 /* ── MOBILE (under 768px) ── */
@@ -167,7 +167,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   .sidebar.mobile-open{width:260px;overflow:visible;z-index:200;}
   .main{margin-left:0!important;}
   #sb-drag{display:none!important;}
-  .page{padding:16px!important;}
+  .page{padding:14px!important;}
 
   /* Mobile hamburger bar */
   #mobile-bar{display:flex!important;}
@@ -177,21 +177,21 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   .st .v{font-size:20px!important;}
 
   /* Dashboard layout */
-  #dash-split{flex-direction:column!important;gap:12px!important;}
-  #dash-left,#dash-right{flex:1 1 auto!important;max-width:100%!important;min-width:0!important;border-radius:10px!important;border:1px solid var(--border)!important;}
+  #dash-split{flex-direction:column!important;gap:10px!important;}
+  #dash-left,#dash-right{flex:1 1 auto!important;max-width:100%!important;min-width:0!important;border-radius:9px!important;border:1px solid var(--border)!important;}
   #dash-drag{display:none!important;}
   .hdr{flex-direction:column;gap:8px;align-items:flex-start!important;}
   .hdr h1{font-size:18px!important;}
 
   /* Mini calendar responsive */
-  div[style*="grid-template-columns:1fr 280px"]{grid-template-columns:1fr!important;}
-  .mcal{margin-top:12px;}
+  div[style*="grid-template-columns:1fr 260px"],div[style*="grid-template-columns:1fr 280px"]{grid-template-columns:1fr!important;}
+  .mcal{margin-top:10px;}
 
   /* Email split stacked */
   #email-split{flex-direction:column!important;}
-  #email-left{flex:0 0 auto!important;max-width:100%!important;height:250px!important;border-radius:10px 10px 0 0!important;}
+  #email-left{flex:0 0 auto!important;max-width:100%!important;height:250px!important;border-radius:9px 9px 0 0!important;}
   #email-drag{display:none!important;}
-  #email-right{height:auto!important;max-height:50vh!important;border-radius:0 0 10px 10px!important;}
+  #email-right{height:auto!important;max-height:50vh!important;border-radius:0 0 9px 9px!important;}
   .email-accts{flex-wrap:wrap;}
   .etb{flex-wrap:wrap;gap:6px;}
 
@@ -199,7 +199,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   .ig{grid-template-columns:1fr!important;}
 
   /* AI chat */
-  .ai-chat{height:calc(100vh - 250px)!important;min-height:250px!important;}
+  .ai-chat{height:calc(100vh - 220px)!important;min-height:250px!important;}
   .ai-models{flex-wrap:wrap;}
   .ai-slots{grid-template-columns:1fr!important;}
 
@@ -213,7 +213,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   #sam-msgs{max-height:200px!important;}
 
   /* Calendar events */
-  #cevents{max-height:calc(100vh - 200px)!important;}
+  #cevents{max-height:calc(100vh - 180px)!important;}
 
   /* Scheduling cards */
   .card{overflow-x:auto;}
@@ -423,7 +423,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
       <button onclick="this.textContent='↻ Refreshing...';this.disabled=true;cLoaded=false;loadCal().finally(()=>{this.textContent='↻ Refresh';this.disabled=false;})" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
     </div>
   </div>
-  <div id="cevents" style="max-height:calc(100vh - 220px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;"><div class="eld">Loading calendar...</div></div>
+  <div id="cevents" style="max-height:calc(100vh - 190px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px;"><div class="eld">Loading calendar...</div></div>
   <div id="cal-vdrag" style="height:6px;cursor:row-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;border-radius:3px;margin:2px 0;" onmousedown="startCalDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:2px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
   <!-- Add Event Modal -->
   <div id="event-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
@@ -533,16 +533,16 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   </div>
   <!-- Content sections -->
   <div id="zoom-meetings" class="card" style="padding:0;overflow:hidden;">
-    <div id="zlist" style="max-height:calc(100vh - 380px);overflow-y:auto;"><div class="eld">Loading Zoom meetings...</div></div>
+    <div id="zlist" style="max-height:calc(100vh - 340px);overflow-y:auto;"><div class="eld">Loading Zoom meetings...</div></div>
   </div>
   <div id="zoom-past" class="card" style="padding:0;overflow:hidden;display:none;">
-    <div id="zpast-list" style="max-height:calc(100vh - 380px);overflow-y:auto;"><div class="eld">Loading past meetings...</div></div>
+    <div id="zpast-list" style="max-height:calc(100vh - 340px);overflow-y:auto;"><div class="eld">Loading past meetings...</div></div>
   </div>
   <div id="zoom-recordings" class="card" style="padding:0;overflow:hidden;display:none;">
-    <div id="zreclist" style="max-height:calc(100vh - 380px);overflow-y:auto;"><div class="eld">Loading recordings...</div></div>
+    <div id="zreclist" style="max-height:calc(100vh - 340px);overflow-y:auto;"><div class="eld">Loading recordings...</div></div>
   </div>
   <div id="zoom-transcripts" class="card" style="padding:0;overflow:hidden;display:none;">
-    <div id="ztranscripts" style="max-height:calc(100vh - 380px);overflow-y:auto;"><div class="eld">No processed transcripts yet. Click "Process Transcript" on any recording.</div></div>
+    <div id="ztranscripts" style="max-height:calc(100vh - 340px);overflow-y:auto;"><div class="eld">No processed transcripts yet. Click "Process Transcript" on any recording.</div></div>
   </div>
   <!-- Create Zoom Meeting Modal -->
   <div id="zoom-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
@@ -603,7 +603,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
     <button class="etb-f" onclick="filterEvents('tasks',this)">✅ Task Deadlines</button>
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
-    <div id="events-list" style="max-height:calc(100vh - 260px);overflow-y:auto;"><div class="eld">Loading events from all sources...</div></div>
+    <div id="events-list" style="max-height:calc(100vh - 220px);overflow-y:auto;"><div class="eld">Loading events from all sources...</div></div>
   </div>
   <div id="events-vdrag" style="height:6px;cursor:row-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;border-radius:3px;margin:2px 0;" onmousedown="startEventsDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:2px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
 </div>
@@ -774,7 +774,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   </div>
   <!-- Cancelled Bucket Summary -->
   <div class="card" style="padding:0;overflow:hidden;">
-    <div id="tlist" style="max-height:calc(100vh - 280px);overflow-y:auto;"><div class="eld">Loading tasks...</div></div>
+    <div id="tlist" style="max-height:calc(100vh - 240px);overflow-y:auto;"><div class="eld">Loading tasks...</div></div>
   </div>
   <div id="task-vdrag" style="height:6px;cursor:row-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;border-radius:3px;margin:2px 0;" onmousedown="startTaskDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:2px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
   <!-- Add/Edit Task Modal -->
@@ -906,7 +906,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
       <button class="etb-f" onclick="filterInst('schedule',this)">Schedule</button>
       <button class="etb-f" onclick="filterInst('custom',this)">Custom</button>
     </div>
-    <div id="inst-list" style="display:flex;flex-direction:column;gap:8px;max-height:500px;overflow-y:auto;"></div>
+    <div id="inst-list" style="display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 300px);min-height:300px;overflow-y:auto;"></div>
   </div>
 </div>
 <!-- Instruction Modal -->
