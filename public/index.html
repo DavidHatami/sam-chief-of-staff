@@ -1980,8 +1980,33 @@ async function fetchEmailsFromAPI(folder){
     return d.value||[];
   }catch(e){document.getElementById('elist').innerHTML='<div class="eld">Error loading emails.</div>';return null;}
 }
-// Email body cache — read once, instant forever
-const emailBodyCache=new Map();
+// Email body cache — LRU-capped at 100 most recent bodies to prevent unbounded growth
+// over long sessions. Map preserves insertion order, so promote-on-access = delete+set
+// and eviction = delete first key when size exceeds cap.
+const EMAIL_BODY_CACHE_CAP=100;
+const _emailBodyCacheMap=new Map();
+const emailBodyCache={
+  has(k){return _emailBodyCacheMap.has(k);},
+  get(k){
+    if(!_emailBodyCacheMap.has(k))return undefined;
+    const v=_emailBodyCacheMap.get(k);
+    // Promote to most-recent by delete+set
+    _emailBodyCacheMap.delete(k);
+    _emailBodyCacheMap.set(k,v);
+    return v;
+  },
+  set(k,v){
+    if(_emailBodyCacheMap.has(k))_emailBodyCacheMap.delete(k);
+    _emailBodyCacheMap.set(k,v);
+    if(_emailBodyCacheMap.size>EMAIL_BODY_CACHE_CAP){
+      const oldest=_emailBodyCacheMap.keys().next().value;
+      _emailBodyCacheMap.delete(oldest);
+    }
+  },
+  delete(k){return _emailBodyCacheMap.delete(k);},
+  clear(){_emailBodyCacheMap.clear();},
+  get size(){return _emailBodyCacheMap.size;},
+};
 
 function renderEmailBody(d){
   document.getElementById('er-subject').textContent=d.subject||'(no subject)';
