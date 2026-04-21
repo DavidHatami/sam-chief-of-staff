@@ -331,11 +331,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 </div>
 <div id="p-email" class="page">
   <div class="hdr"><div><h1>Email</h1><p class="hdr-sub">All connected email accounts</p></div></div>
-  <div class="email-accts">
-    <div class="email-acct active" onclick="switchAcct('m365',this)">📧 admin@edupolicy.ai (M365)</div>
-    <div class="email-acct" onclick="switchAcct('yahoo',this)">📬 dh30111@yahoo.com</div>
-    <div class="email-acct" onclick="switchAcct('gmail',this)">📩 dh30111@gmail.com</div>
-  </div>
+  <div class="email-accts" id="email-accts"><!-- Dynamic account tabs rendered by JS --></div>
   <div class="etb">
     <button class="active" id="btn-inbox" onclick="currentFolder='inbox';loadE('inbox',this)">Inbox</button>
     <button id="btn-sent" onclick="currentFolder='sentitems';loadE('sentitems',this)">Sent</button>
@@ -372,6 +368,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
           <button class="ti-btn" onclick="emailAction('replyall')" style="padding:5px 12px;">↩↩ Reply All</button>
           <button class="ti-btn" onclick="emailAction('forward')" style="padding:5px 12px;">↪ Forward</button>
           <button class="ti-btn" onclick="extractTask()" style="padding:5px 12px;background:var(--accent-glow);color:var(--accent);border-color:var(--accent);">✅ Extract Task</button>
+          <button class="ti-btn" onclick="extractEvent()" style="padding:5px 12px;background:var(--green-dim);color:var(--green);border-color:var(--green);">📅 Extract Event</button>
           <button class="ti-btn del" onclick="deleteEmail()" style="padding:5px 12px;" id="btn-delete-email">🗑 Delete</button>
           <button class="ti-btn" onclick="toggleFlag()" style="padding:5px 12px;" id="btn-flag-email">📌 Pin</button>
           <button class="ti-btn" onclick="toggleReadStatus()" style="padding:5px 12px;" id="btn-readtoggle">📩 Mark Unread</button>
@@ -1303,14 +1300,53 @@ async function sendSAM(){
   msgs.scrollTop=msgs.scrollHeight;
 }
 let eLoaded=false;
-let currentMailAPI='m365'; // 'm365', 'gmail', or 'yahoo'
+let currentMailAPI='m365';
 let currentFolder='inbox';
 let allEmailsCache=[];
 let emailSearchTerm='';
-// Per-account cache for instant tab switching
-let emailAccountCache={m365:null,gmail:null,yahoo:null};
-let emailCacheTs={m365:0,gmail:0,yahoo:0};
-const EMAIL_CACHE_TTL=60000; // 60s cache
+let emailAccountCache={};
+let emailCacheTs={};
+const EMAIL_CACHE_TTL=60000;
+
+// ═══════════════════════════════════════════════════════════
+// EMAIL ACCOUNT REGISTRY — Add accounts here (up to 10)
+// Each account needs: id, label, type, icon, apiBase
+// For new accounts of existing types, add env vars in Netlify
+// ═══════════════════════════════════════════════════════════
+const EMAIL_ACCOUNTS=[
+  {id:'m365',    label:'admin@edupolicy.ai',  type:'m365',  icon:'📧', apiBase:'/api/m365',  sendBase:'/api/m365/mail/send',  fromLabel:'admin@edupolicy.ai (M365)'},
+  {id:'dhatami', label:'dhatami@edupolicy.ai',type:'resend',icon:'✉️', apiBase:null,         sendBase:'/api/resend-send',     fromLabel:'dhatami@edupolicy.ai'},
+  {id:'gmail',   label:'dh30111@gmail.com',   type:'gmail', icon:'📩', apiBase:'/api/gmail',  sendBase:'/api/gmail/mail/send', fromLabel:'dh30111@gmail.com (Gmail)'},
+  {id:'yahoo',   label:'dh30111@yahoo.com',   type:'yahoo', icon:'📬', apiBase:'/api/yahoo',  sendBase:'/api/yahoo/mail/send', fromLabel:'dh30111@yahoo.com (Yahoo)'},
+  // ── EMPTY SLOTS — uncomment and configure to add accounts ──
+  // {id:'m365-2',  label:'you@domain.com',     type:'m365',  icon:'📧', apiBase:'/api/m365',  sendBase:'/api/m365/mail/send',  fromLabel:'you@domain.com (M365)'},
+  // {id:'gmail-2', label:'other@gmail.com',    type:'gmail', icon:'📩', apiBase:'/api/gmail',  sendBase:'/api/gmail/mail/send', fromLabel:'other@gmail.com (Gmail)'},
+  // {id:'imap-1',  label:'you@custom.com',     type:'yahoo', icon:'📮', apiBase:'/api/yahoo',  sendBase:'/api/yahoo/mail/send', fromLabel:'you@custom.com (IMAP)'},
+];
+
+// Initialize caches for all accounts
+EMAIL_ACCOUNTS.forEach(a=>{if(a.apiBase){emailAccountCache[a.id]=null;emailCacheTs[a.id]=0;}});
+
+function renderEmailAccountTabs(){
+  const container=document.getElementById('email-accts');
+  if(!container)return;
+  const readableAccounts=EMAIL_ACCOUNTS.filter(a=>a.apiBase);
+  container.innerHTML=readableAccounts.map((a,i)=>`<div class="email-acct${i===0?' active':''}" onclick="switchAcct('${a.id}',this)" data-acct="${a.id}">${a.icon} ${a.label}</div>`).join('');
+}
+
+function renderFromDropdown(){
+  const sel=document.getElementById('ec-from');
+  if(!sel)return;
+  const sendableAccounts=EMAIL_ACCOUNTS.filter(a=>a.sendBase);
+  sel.innerHTML=sendableAccounts.map(a=>`<option value="${a.id}">${a.fromLabel}</option>`).join('');
+}
+
+function getAccountById(id){return EMAIL_ACCOUNTS.find(a=>a.id===id);}
+function getAccountApiBase(id){const a=getAccountById(id);return a?.apiBase||'/api/m365';}
+
+// Render tabs and From dropdown on load
+renderEmailAccountTabs();
+renderFromDropdown();
 
 function showEmailSkeleton(){
   const list=document.getElementById('elist');
@@ -1320,9 +1356,10 @@ function showEmailSkeleton(){
 
 // Preload all accounts in parallel on first email page visit
 async function preloadAllEmail(){
-  const apis=[{k:'m365',u:'/api/m365/mail?folder=inbox&top=25'},{k:'gmail',u:'/api/gmail/mail?folder=inbox&top=15'},{k:'yahoo',u:'/api/yahoo/mail?folder=inbox&top=20'}];
-  const results=await Promise.allSettled(apis.map(a=>fetch(a.u).then(r=>r.json())));
-  results.forEach((r,i)=>{if(r.status==='fulfilled'&&!r.value?.error){emailAccountCache[apis[i].k]=r.value.value||[];emailCacheTs[apis[i].k]=Date.now();}});
+  const readable=EMAIL_ACCOUNTS.filter(a=>a.apiBase);
+  const tops={m365:'25',gmail:'15',yahoo:'20'};
+  const results=await Promise.allSettled(readable.map(a=>fetch(a.apiBase+'/mail?folder=inbox&top='+(tops[a.type]||'20')).then(r=>r.json())));
+  results.forEach((r,i)=>{if(r.status==='fulfilled'&&!r.value?.error){const id=readable[i].id;emailAccountCache[id]=r.value.value||[];emailCacheTs[id]=Date.now();}});
 }
 
 function renderEmailList(msgs){
@@ -1401,9 +1438,17 @@ function openNewCompose(){
   if(document.getElementById('ec-bcc'))document.getElementById('ec-bcc').value='';
   // Auto-select the right From based on current account
   const fromSel=document.getElementById('ec-from');
-  if(currentMailAPI==='gmail')fromSel.value='gmail';
-  else if(currentMailAPI==='yahoo')fromSel.value='yahoo';
-  else fromSel.value='m365';
+  // Auto-select From based on current account
+  if(fromSel){
+    const acct=getAccountById(currentMailAPI);
+    if(acct){
+      // Find the matching option or default to first sendable
+      const opts=[...fromSel.options];
+      const match=opts.find(o=>o.value===currentMailAPI);
+      if(match)fromSel.value=currentMailAPI;
+      else if(opts.length)fromSel.selectedIndex=0;
+    }
+  }
   compose.style.display='block';
   document.getElementById('ec-to').focus();
 }
@@ -1412,7 +1457,7 @@ async function toggleReadStatus(){
   if(!currentEmail||!currentEmail.id)return;
   const isRead=currentEmail.isRead!==false;
   const newStatus=!isRead;
-  const apiBase=currentMailAPI==='gmail'?'/api/gmail':currentMailAPI==='yahoo'?'/api/yahoo':'/api/m365';
+  const apiBase=getAccountApiBase(currentMailAPI);
   try{
     const r=await fetch(apiBase+'/mail/read',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:currentEmail.id,isRead:newStatus})});
     const d=await r.json();
@@ -1456,12 +1501,14 @@ async function loadE(folder,btn){
 
 async function fetchEmailsFromAPI(folder){
   try{
+    const acct=getAccountById(currentMailAPI);
+    const acctType=acct?.type||'m365';
+    const apiBase=acct?.apiBase||'/api/m365';
     let f=folder||'inbox';
-    if(currentMailAPI==='m365'){if(f==='sent'||f==='sentitems')f='sentitems';else if(f==='trash'||f==='deleteditems')f='deleteditems';else if(f==='drafts')f='drafts';else if(f==='archive')f='archive';else f='inbox';}
-    else if(currentMailAPI==='gmail'){if(f==='sent'||f==='sentitems')f='sent';else if(f==='trash')f='trash';else if(f==='drafts')f='drafts';else f='inbox';}
+    if(acctType==='m365'){if(f==='sent'||f==='sentitems')f='sentitems';else if(f==='trash'||f==='deleteditems')f='deleteditems';else if(f==='drafts')f='drafts';else if(f==='archive')f='archive';else f='inbox';}
+    else if(acctType==='gmail'){if(f==='sent'||f==='sentitems')f='sent';else if(f==='trash')f='trash';else if(f==='drafts')f='drafts';else f='inbox';}
     else{if(f==='sent'||f==='sentitems')f='sent';else f='inbox';}
-    const top=currentMailAPI==='gmail'?'15':currentMailAPI==='yahoo'?'20':'25';
-    const apiBase=currentMailAPI==='gmail'?'/api/gmail':currentMailAPI==='yahoo'?'/api/yahoo':'/api/m365';
+    const top=acctType==='gmail'?'15':acctType==='yahoo'?'20':'25';
     const r=await fetch(apiBase+'/mail?folder='+f+'&top='+top);
     const d=await r.json();
     if(d.error){document.getElementById('elist').innerHTML='<div class="eld">'+esc(String(d.error))+'</div>';return null;}
@@ -1477,7 +1524,7 @@ async function readEmail(mid,row){
   document.querySelectorAll('.ei').forEach(r=>{r.style.background='';r.style.borderLeft='';});
   if(row){row.style.background='var(--surface-2)';row.style.borderLeft='3px solid var(--accent)';}
   try{
-    const apiBase=currentMailAPI==='gmail'?'/api/gmail':currentMailAPI==='yahoo'?'/api/yahoo':'/api/m365';
+    const apiBase=getAccountApiBase(currentMailAPI);
     const r=await fetch(apiBase+'/mail?id='+mid);
     const d=await r.json();
     if(d.error){empty.textContent='Error: '+d.error;return;}
@@ -1574,29 +1621,19 @@ async function sendCompose(){
     const toList=to.split(',').map(e=>e.trim()).filter(Boolean);
     const ccList=cc?cc.split(',').map(e=>e.trim()).filter(Boolean):[];
     const bccList=bcc?bcc.split(',').map(e=>e.trim()).filter(Boolean):[];
-    let sendBase,viaNote='',payload;
-
-    if(fromAcct==='dhatami'){
-      sendBase='/api/resend-send';
-      payload={to:toList,cc:ccList,bcc:bccList,subject:subj,content:body,from:'dhatami@edupolicy.ai',fromName:'Dr. David Hatami'};
-      viaNote=' (via dhatami@)';
-    }else if(fromAcct==='gmail'){
-      sendBase='/api/gmail';
-      payload={to:toList,cc:ccList,bcc:bccList,subject:subj,content:body,contentType:'Text'};
-    }else if(fromAcct==='yahoo'){
-      sendBase='/api/yahoo';
-      payload={to:toList,cc:ccList,bcc:bccList,subject:subj,content:body,contentType:'Text'};
-      viaNote=' (via Yahoo)';
+    const acct=getAccountById(fromAcct);
+    if(!acct||!acct.sendBase){btn.textContent='No send route';btn.disabled=false;return;}
+    let payload;
+    if(acct.type==='resend'){
+      payload={to:toList,cc:ccList,bcc:bccList,subject:subj,content:body,from:acct.label,fromName:'Dr. David Hatami'};
     }else{
-      sendBase='/api/m365';
       payload={to:toList,cc:ccList,bcc:bccList,subject:subj,content:body,contentType:'Text'};
     }
-
-    const endpoint=fromAcct==='dhatami'?sendBase:sendBase+'/mail/send';
+    const endpoint=acct.sendBase;
     const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const d=await r.json();
     if(d.success){
-      btn.textContent='Sent ✓'+viaNote;btn.style.background='var(--green)';
+      btn.textContent='Sent ✓ via '+(acct?.label||'');btn.style.background='var(--green)';
       setTimeout(()=>{closeCompose();btn.textContent='Send';btn.style.background='';btn.disabled=false;},1500);
     }else{
       btn.textContent='Error: '+(d.error||'').substring(0,30);btn.style.background='var(--red)';
@@ -1632,6 +1669,79 @@ function extractTask(){
   });
 }
 
+// ── EXTRACT EVENT FROM EMAIL — AI-powered ──
+async function extractEvent(){
+  if(!currentEmail)return;
+  const btn=document.querySelector('[onclick="extractEvent()"]');
+  if(btn){btn.disabled=true;btn.textContent='🧠 Analyzing...';}
+  const subj=currentEmail.subject||'';
+  const fromName=currentEmail.from?.emailAddress?.name||'';
+  const fromAddr=currentEmail.from?.emailAddress?.address||'';
+  const bodyText=currentEmail.body?.content||currentEmail.bodyPreview||'';
+  // Strip HTML tags for plain text
+  const plainBody=bodyText.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').substring(0,1500);
+
+  const aiPrompt=`Extract calendar event details from this email. Return ONLY a JSON object with these fields (use null for missing info):
+{"title":"event title","date":"YYYY-MM-DD","startTime":"HH:MM","duration":30,"location":"location or zoom link","attendees":["email1","email2"],"notes":"brief context"}
+
+EMAIL:
+From: ${fromName} <${fromAddr}>
+Subject: ${subj}
+Body: ${plainBody}
+
+Return ONLY the JSON object, nothing else.`;
+
+  try{
+    const r=await fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'gemini',prompt:aiPrompt})});
+    const d=await r.json();
+    const reply=d.reply||'';
+    // Parse JSON from AI response
+    let eventData=null;
+    try{
+      const jsonMatch=reply.match(/\{[\s\S]*\}/);
+      if(jsonMatch)eventData=JSON.parse(jsonMatch[0]);
+    }catch(e){}
+
+    if(eventData){
+      // Pre-fill the event modal
+      document.getElementById('ev-title').value=eventData.title||subj||'Event from email';
+      document.getElementById('ev-date').value=eventData.date||new Date().toISOString().split('T')[0];
+      if(eventData.startTime){
+        const sel=document.getElementById('ev-start');
+        // Find closest 15-min slot
+        const [h,m]=eventData.startTime.split(':').map(Number);
+        const roundedM=Math.round(m/15)*15;
+        const timeVal=String(h).padStart(2,'0')+':'+String(roundedM%60).padStart(2,'0');
+        sel.value=timeVal;
+      }
+      document.getElementById('ev-dur').value=String(eventData.duration||30);
+      document.getElementById('ev-loc').value=eventData.location||'';
+      document.getElementById('ev-notes').value=(eventData.notes||'')+'\n\nExtracted from: '+subj+'\nFrom: '+fromName;
+      document.getElementById('ev-attendees').value=(eventData.attendees||[]).filter(Boolean).join(', ');
+      document.getElementById('ev-save').textContent='Create Event';
+      document.getElementById('event-modal').style.display='flex';
+      if(btn){btn.disabled=false;btn.textContent='📅 Extract Event';}
+    }else{
+      // AI couldn't parse — open modal with basic info
+      document.getElementById('ev-title').value=subj||'Event from email';
+      document.getElementById('ev-date').value=new Date().toISOString().split('T')[0];
+      document.getElementById('ev-notes').value='From: '+fromName+' <'+fromAddr+'>\n'+plainBody.substring(0,300);
+      document.getElementById('ev-attendees').value=fromAddr||'';
+      document.getElementById('ev-save').textContent='Create Event';
+      document.getElementById('event-modal').style.display='flex';
+      if(btn){btn.disabled=false;btn.textContent='📅 Extract Event';}
+    }
+  }catch(e){
+    // Fallback — open modal with basic email info
+    document.getElementById('ev-title').value=subj||'Event from email';
+    document.getElementById('ev-date').value=new Date().toISOString().split('T')[0];
+    document.getElementById('ev-notes').value='From: '+fromName+'\n'+(currentEmail.bodyPreview||'').substring(0,200);
+    document.getElementById('ev-attendees').value=fromAddr||'';
+    document.getElementById('event-modal').style.display='flex';
+    if(btn){btn.disabled=false;btn.textContent='📅 Extract Event';}
+  }
+}
+
 // ── DELETE EMAIL ──
 async function deleteEmail(){
   if(!currentEmail||!currentEmail.id)return;
@@ -1639,7 +1749,7 @@ async function deleteEmail(){
   const btn=document.getElementById('btn-delete-email');
   if(btn){btn.disabled=true;btn.textContent='Deleting...';}
   try{
-    const apiBase=currentMailAPI==='gmail'?'/api/gmail':currentMailAPI==='yahoo'?'/api/yahoo':'/api/m365';
+    const apiBase=getAccountApiBase(currentMailAPI);
     const r=await fetch(apiBase+'/mail?id='+encodeURIComponent(currentEmail.id),{method:'DELETE'});
     const d=await r.json();
     if(d.success){
@@ -2236,14 +2346,14 @@ function showPending(){
   const tasks=document.querySelector('#p-dash .card');
   if(tasks){tasks.scrollIntoView({behavior:'smooth',block:'center'});tasks.style.borderColor='var(--amber)';setTimeout(()=>tasks.style.borderColor='',2000);}
 }
-function switchAcct(acct,el){
+function switchAcct(acctId,el){
   document.querySelectorAll('.email-acct').forEach(a=>a.classList.remove('active'));
-  el.classList.add('active');
+  if(el)el.classList.add('active');
   const reader=document.getElementById('ereader-empty');
   const content=document.getElementById('ereader-content');
   if(reader){reader.style.display='block';reader.textContent='Click an email to read it';}
   if(content)content.style.display='none';
-  currentMailAPI=acct;
+  currentMailAPI=acctId;
   loadE('inbox',document.getElementById('btn-inbox'));
 }
 
