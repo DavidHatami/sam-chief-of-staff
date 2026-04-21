@@ -358,7 +358,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
     <div id="email-left" class="card" style="padding:0;overflow:hidden;flex:0 0 300px;min-width:240px;max-width:50%;border-radius:10px 0 0 10px;border-right:none;"><div class="el" id="elist" style="height:calc(100vh - 180px);overflow-y:auto;"><div class="eld">Loading emails...</div></div></div>
     <div id="email-drag" style="width:5px;cursor:col-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;" onmousedown="startDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:24px;background:var(--text-muted);border-radius:1px;opacity:0.4;"></div></div>
     <div id="email-right" class="card" style="flex:1;overflow-y:auto;height:calc(100vh - 180px);border-radius:0 10px 10px 0;border-left:none;display:flex;flex-direction:column;padding:16px 20px;">
-      <div class="eld" id="ereader-empty" style="display:block;">Click an email on the left to read it here</div>
+      <div class="eld" id="ereader-empty" style="display:none;"></div>
       <div id="ereader-content" style="display:none;">
         <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border);">
           <div id="er-subject" style="font-size:17px;font-weight:600;margin-bottom:4px;"></div>
@@ -1402,6 +1402,9 @@ function renderEmailList(msgs){
     de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
   }
   updateFlagIndicators();
+  // Auto-load first email — no more "click to read" placeholder
+  const firstRow=list.querySelector('.ei');
+  if(firstRow)setTimeout(()=>firstRow.click(),80);
   // Safe prefetch — fetches email bodies into cache WITHOUT marking as read
   // When user clicks, render is instant from cache. Click also marks as read then.
   setTimeout(()=>{
@@ -1601,11 +1604,14 @@ async function readEmail(mid,row){
   document.querySelectorAll('.ei').forEach(r=>{r.style.background='';r.style.borderLeft='';});
   if(row){row.style.background='var(--surface-2)';row.style.borderLeft='3px solid var(--accent)';}
 
-  // Check body cache first — instant render, zero network
+  // Check body cache first — instant render, zero network for display
   const cacheKey=currentMailAPI+':'+mid;
   if(emailBodyCache.has(cacheKey)){
     renderEmailBody(emailBodyCache.get(cacheKey));
     if(row){row.classList.remove('unread');const dot=row.querySelector('.edot');if(dot)dot.className='edot r';}
+    // Background mark-as-read on server (won't block UI)
+    const apiBase=getAccountApiBase(currentMailAPI);
+    fetch(apiBase+'/mail/read',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:decodeURIComponent(mid),isRead:true})}).catch(()=>{});
     return;
   }
 
