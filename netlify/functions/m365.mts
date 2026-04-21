@@ -92,17 +92,20 @@ export default async (req: Request, context: Context) => {
 
       // Single message with full body
       if (msgId) {
+        const isPrefetch = url.searchParams.get("prefetch") === "1";
         const resp = await fetch(
           `${graphBase}/messages/${msgId}?$select=subject,from,toRecipients,receivedDateTime,isRead,body,bodyPreview`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const data = await resp.json();
-        // Mark as read
-        fetch(`${graphBase}/messages/${msgId}`, {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ isRead: true }),
-        }).catch(() => {});
+        // Mark as read ONLY on real read, not prefetch
+        if (!isPrefetch) {
+          fetch(`${graphBase}/messages/${msgId}`, {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ isRead: true }),
+          }).catch(() => {});
+        }
         return new Response(JSON.stringify(data), {
           headers: { "Content-Type": "application/json" },
         });

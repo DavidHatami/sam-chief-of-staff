@@ -1402,8 +1402,31 @@ function renderEmailList(msgs){
     de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
   }
   updateFlagIndicators();
-  // NOTE: Auto-click and prefetch removed — they silently marked emails as read.
-  // Body cache is still active: once you click an email, re-clicks are instant.
+  // Safe prefetch — fetches email bodies into cache WITHOUT marking as read
+  // When user clicks, render is instant from cache. Click also marks as read then.
+  setTimeout(()=>{
+    const acct=getAccountById(currentMailAPI);
+    if(!acct?.apiBase)return;
+    const rows=list.querySelectorAll('.ei');
+    const queue=[];
+    for(let i=0;i<Math.min(10,rows.length);i++){
+      const onclick=rows[i].getAttribute('onclick')||'';
+      const midMatch=onclick.match(/readEmail\('([^']+)'/);
+      if(midMatch){
+        const mid=midMatch[1];
+        const ck=currentMailAPI+':'+mid;
+        if(!emailBodyCache.has(ck))queue.push({mid,ck});
+      }
+    }
+    let running=0;
+    function next(){
+      if(!queue.length||running>=3)return;
+      const {mid,ck}=queue.shift();running++;
+      // prefetch=1 tells M365 NOT to mark as read; Gmail/Yahoo already skip mark-on-read
+      fetch(acct.apiBase+'/mail?id='+mid+'&prefetch=1').then(r=>r.json()).then(d=>{if(!d.error)emailBodyCache.set(ck,d);}).catch(()=>{}).finally(()=>{running--;next();});
+    }
+    next();next();next();
+  },200);
 }
 
 function sortEmails(val){
@@ -1554,7 +1577,7 @@ function renderEmailBody(d){
     iframe.style.cssText='width:100%;border:none;min-height:200px;border-radius:6px;background:transparent;contain:layout style;';
     iframe.sandbox='allow-same-origin';
     bodyEl.innerHTML='';bodyEl.appendChild(iframe);
-    const darkCSS='html,body{background:#1a1d26!important;color:#c8cad0!important;font-family:-apple-system,BlinkMacSystemFont,sans-serif!important;font-size:14px!important;line-height:1.65!important;margin:12px!important;padding:0!important;word-wrap:break-word;overflow-wrap:break-word;}a{color:#6b9fff!important;}img{max-width:100%!important;height:auto!important;}table{max-width:100%!important;border-collapse:collapse;}td,th{padding:4px 8px;}pre,code{background:#12141a!important;color:#c8cad0!important;padding:4px 6px;border-radius:4px;font-size:13px;overflow-x:auto;max-width:100%;}blockquote{border-left:3px solid #2a2e3a;padding-left:12px;margin-left:0;color:#8b8fa3;}hr{border:none;border-top:1px solid #2a2e3a;}';
+    const darkCSS='html,body{background:#1a1d26!important;color:#c8cad0!important;font-family:-apple-system,BlinkMacSystemFont,sans-serif!important;font-size:14px!important;line-height:1.65!important;margin:12px!important;padding:0!important;word-wrap:break-word!important;overflow-wrap:break-word!important;overflow-x:hidden!important;max-width:100%!important;box-sizing:border-box!important;}*{max-width:100%!important;box-sizing:border-box!important;}a{color:#6b9fff!important;word-break:break-all;}img{max-width:100%!important;height:auto!important;}table{max-width:100%!important;width:auto!important;table-layout:auto!important;border-collapse:collapse;}td,th{padding:4px 8px;word-break:break-word!important;}pre,code{background:#12141a!important;color:#c8cad0!important;padding:4px 6px;border-radius:4px;font-size:13px;overflow-x:auto;max-width:100%;white-space:pre-wrap!important;}blockquote{border-left:3px solid #2a2e3a;padding-left:12px;margin-left:0;color:#8b8fa3;}hr{border:none;border-top:1px solid #2a2e3a;}h1,h2,h3,h4{font-size:1.2em!important;line-height:1.3!important;}div,p,span{max-width:100%!important;}';
     iframe.onload=function(){try{iframe.style.height=Math.min(2000,Math.max(200,iframe.contentDocument.body.scrollHeight+30))+'px';}catch(e){}};
     setTimeout(()=>{try{iframe.contentDocument.open();iframe.contentDocument.write('<!DOCTYPE html><html><head><style>'+darkCSS+'</style></head><body>'+body.content+'</body></html>');iframe.contentDocument.close();}catch(e){bodyEl.textContent=d.bodyPreview||'';}},30);
   }else{
