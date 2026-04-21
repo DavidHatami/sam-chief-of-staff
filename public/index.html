@@ -1307,6 +1307,23 @@ let currentMailAPI='m365'; // 'm365', 'gmail', or 'yahoo'
 let currentFolder='inbox';
 let allEmailsCache=[];
 let emailSearchTerm='';
+// Per-account cache for instant tab switching
+let emailAccountCache={m365:null,gmail:null,yahoo:null};
+let emailCacheTs={m365:0,gmail:0,yahoo:0};
+const EMAIL_CACHE_TTL=60000; // 60s cache
+
+function showEmailSkeleton(){
+  const list=document.getElementById('elist');
+  let sk='';for(let i=0;i<6;i++){sk+=`<div class="ei" style="opacity:0.25;pointer-events:none;"><div class="edot r"></div><div style="min-width:0"><div style="width:${60+Math.random()*80}px;height:13px;background:var(--surface-2);border-radius:4px;margin-bottom:5px;"></div><div style="width:${120+Math.random()*120}px;height:12px;background:var(--surface-2);border-radius:4px;margin-bottom:4px;"></div><div style="width:${160+Math.random()*80}px;height:10px;background:var(--surface-2);border-radius:4px;"></div></div><div class="et" style="width:50px;height:10px;background:var(--surface-2);border-radius:4px;"></div></div>`;}
+  list.innerHTML=sk;
+}
+
+// Preload all accounts in parallel on first email page visit
+async function preloadAllEmail(){
+  const apis=[{k:'m365',u:'/api/m365/mail?folder=inbox&top=25'},{k:'gmail',u:'/api/gmail/mail?folder=inbox&top=15'},{k:'yahoo',u:'/api/yahoo/mail?folder=inbox&top=20'}];
+  const results=await Promise.allSettled(apis.map(a=>fetch(a.u).then(r=>r.json())));
+  results.forEach((r,i)=>{if(r.status==='fulfilled'&&!r.value?.error){emailAccountCache[apis[i].k]=r.value.value||[];emailCacheTs[apis[i].k]=Date.now();}});
+}
 
 function renderEmailList(msgs){
   const list=document.getElementById('elist');
@@ -1420,36 +1437,36 @@ async function loadE(folder,btn){
   eLoaded=true;
   document.querySelectorAll('.etb button:not([style*="accent"])').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
-  const list=document.getElementById('elist');
-  list.innerHTML='<div class="eld">Loading...</div>';
   emailSearchTerm='';
   const searchBox=document.getElementById('email-search');
   if(searchBox)searchBox.value='';
+  const isInbox=(!folder||folder==='inbox');
+  // Instant cache hit for inbox
+  if(isInbox&&emailAccountCache[currentMailAPI]&&(Date.now()-emailCacheTs[currentMailAPI])<EMAIL_CACHE_TTL){
+    allEmailsCache=emailAccountCache[currentMailAPI];
+    renderEmailList(allEmailsCache);
+    // Silent background refresh
+    fetchEmailsFromAPI(folder).then(msgs=>{if(msgs){allEmailsCache=msgs;emailAccountCache[currentMailAPI]=msgs;emailCacheTs[currentMailAPI]=Date.now();renderEmailList(msgs);}}).catch(()=>{});
+    return;
+  }
+  showEmailSkeleton();
+  const msgs=await fetchEmailsFromAPI(folder);
+  if(msgs){allEmailsCache=msgs;if(isInbox){emailAccountCache[currentMailAPI]=msgs;emailCacheTs[currentMailAPI]=Date.now();}renderEmailList(msgs);}
+}
+
+async function fetchEmailsFromAPI(folder){
   try{
-    let f=folder;
-    if(currentMailAPI==='m365'){
-      if(folder==='sent'||folder==='sentitems')f='sentitems';
-      else if(folder==='trash'||folder==='deleteditems')f='deleteditems';
-      else if(folder==='drafts')f='drafts';
-      else if(folder==='archive')f='archive';
-      else f='inbox';
-    }else if(currentMailAPI==='gmail'){
-      if(folder==='sent'||folder==='sentitems')f='sent';
-      else if(folder==='trash')f='trash';
-      else if(folder==='drafts')f='drafts';
-      else f='inbox';
-    }else{
-      if(folder==='sent'||folder==='sentitems')f='sent';
-      else f='inbox';
-    }
+    let f=folder||'inbox';
+    if(currentMailAPI==='m365'){if(f==='sent'||f==='sentitems')f='sentitems';else if(f==='trash'||f==='deleteditems')f='deleteditems';else if(f==='drafts')f='drafts';else if(f==='archive')f='archive';else f='inbox';}
+    else if(currentMailAPI==='gmail'){if(f==='sent'||f==='sentitems')f='sent';else if(f==='trash')f='trash';else if(f==='drafts')f='drafts';else f='inbox';}
+    else{if(f==='sent'||f==='sentitems')f='sent';else f='inbox';}
+    const top=currentMailAPI==='gmail'?'15':currentMailAPI==='yahoo'?'20':'25';
     const apiBase=currentMailAPI==='gmail'?'/api/gmail':currentMailAPI==='yahoo'?'/api/yahoo':'/api/m365';
-    const r=await fetch(apiBase+'/mail?folder='+f+'&top=50');
+    const r=await fetch(apiBase+'/mail?folder='+f+'&top='+top);
     const d=await r.json();
-    if(d.error){list.innerHTML='<div class="eld">'+esc(String(d.error))+'</div>';return;}
-    const msgs=d.value||[];
-    allEmailsCache=msgs;
-    renderEmailList(msgs);
-  }catch(e){list.innerHTML='<div class="eld">Error loading emails.</div>';}
+    if(d.error){document.getElementById('elist').innerHTML='<div class="eld">'+esc(String(d.error))+'</div>';return null;}
+    return d.value||[];
+  }catch(e){document.getElementById('elist').innerHTML='<div class="eld">Error loading emails.</div>';return null;}
 }
 async function readEmail(mid,row){
   if(!mid)return;
@@ -2143,8 +2160,8 @@ function openCalTask(){
 }
 
 loadE('inbox',document.getElementById('btn-inbox'));
-
-// ── DASHBOARD ZOOM COUNT ──
+// Preload Gmail + Yahoo caches in background for instant tab switching
+setTimeout(preloadAllEmail,2000);
 (async function(){
   try{
     const r=await fetch('/api/zoom/meetings');
@@ -2222,17 +2239,12 @@ function showPending(){
 function switchAcct(acct,el){
   document.querySelectorAll('.email-acct').forEach(a=>a.classList.remove('active'));
   el.classList.add('active');
-  const list=document.getElementById('elist');
   const reader=document.getElementById('ereader-empty');
   const content=document.getElementById('ereader-content');
   if(reader){reader.style.display='block';reader.textContent='Click an email to read it';}
   if(content)content.style.display='none';
-  if(acct==='m365'){currentMailAPI='m365';loadE('inbox',document.getElementById('btn-inbox'));}
-  else if(acct==='gmail'){currentMailAPI='gmail';loadE('inbox',document.getElementById('btn-inbox'));}
-  else if(acct==='yahoo'){
-    currentMailAPI='yahoo';
-    loadE('inbox',document.getElementById('btn-inbox'));
-  }
+  currentMailAPI=acct;
+  loadE('inbox',document.getElementById('btn-inbox'));
 }
 
 // ── AI WORKBENCH ──
