@@ -1779,8 +1779,11 @@ function showEmailSkeleton(){
 async function preloadAllEmail(){
   const readable=EMAIL_ACCOUNTS.filter(a=>a.apiBase);
   const tops={m365:'100',gmail:'25',yahoo:'25'};
-  const results=await Promise.allSettled(readable.map(a=>fetch(a.apiBase+'/mail?folder=inbox&top='+(tops[a.type]||'20')).then(r=>r.json())));
-  results.forEach((r,i)=>{if(r.status==='fulfilled'&&!r.value?.error){const id=readable[i].id;emailAccountCache[id]=r.value.value||[];emailCacheTs[id]=Date.now();}});
+  // Skip whichever account is already being fetched by the initial loadE() on startup —
+  // otherwise M365 (default currentMailAPI) gets fetched twice in parallel every load.
+  const toFetch=readable.filter(a=>a.id!==currentMailAPI);
+  const results=await Promise.allSettled(toFetch.map(a=>fetch(a.apiBase+'/mail?folder=inbox&top='+(tops[a.type]||'20')).then(r=>r.json())));
+  results.forEach((r,i)=>{if(r.status==='fulfilled'&&!r.value?.error){const id=toFetch[i].id;emailAccountCache[id]=r.value.value||[];emailCacheTs[id]=Date.now();}});
 }
 
 function renderEmailList(msgs){
