@@ -116,6 +116,7 @@ export default async (req: Request, context: Context) => {
       const raw = await store.get(`proj-${projId}`);
       if (!raw) return new Response(JSON.stringify({ error: "Project not found" }), { status: 404, headers });
       const project: Project = JSON.parse(raw);
+      if (!Array.isArray(project.knowledge)) project.knowledge = [];
 
       // Build context string for AI injection
       let ctx = "";
@@ -218,6 +219,8 @@ export default async (req: Request, context: Context) => {
       const raw = await store.get(`proj-${projId}`);
       if (!raw) return new Response(JSON.stringify({ error: "Project not found" }), { status: 404, headers });
       const project: Project = JSON.parse(raw);
+      // Defensive: normalize missing knowledge array (legacy records or corrupted writes)
+      if (!Array.isArray(project.knowledge)) project.knowledge = [];
       const body = await req.json();
 
       const { title, content, type } = body;
@@ -258,6 +261,7 @@ export default async (req: Request, context: Context) => {
       const raw = await store.get(`proj-${projId}`);
       if (!raw) return new Response(JSON.stringify({ error: "Project not found" }), { status: 404, headers });
       const project: Project = JSON.parse(raw);
+      if (!Array.isArray(project.knowledge)) project.knowledge = [];
 
       project.knowledge = project.knowledge.filter(k => k.id !== kbId);
       project.updated = new Date().toISOString();
