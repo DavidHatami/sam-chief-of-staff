@@ -2088,16 +2088,23 @@ async function loadCal(){
       fetch('/api/gcal/events?start='+startP+'&end='+endP)
     ]);
     let allEvs=[];
+    let errors=[];
     // M365 events
     if(m365Res.status==='fulfilled'){
-      const d=await m365Res.value.json();
-      (d.value||[]).forEach(e=>{e._src='M365';allEvs.push(e);});
-    }
+      try{
+        const d=await m365Res.value.json();
+        if(d.error){errors.push('M365: '+(typeof d.error==='string'?d.error:JSON.stringify(d.error)).substring(0,100));}
+        else{(d.value||[]).forEach(e=>{e._src='M365';allEvs.push(e);});}
+      }catch(e){errors.push('M365 parse: '+String(e).substring(0,80));}
+    }else{errors.push('M365 fetch failed');}
     // Google Calendar events
     if(gcalRes.status==='fulfilled'){
-      const d=await gcalRes.value.json();
-      (d.value||[]).forEach(e=>{e._src='Google';allEvs.push(e);});
-    }
+      try{
+        const d=await gcalRes.value.json();
+        if(d.error){errors.push('Google: '+(typeof d.error==='string'?d.error:JSON.stringify(d.error)).substring(0,100));}
+        else{(d.value||[]).forEach(e=>{e._src='Google';allEvs.push(e);});}
+      }catch(e){errors.push('Google parse: '+String(e).substring(0,80));}
+    }else{errors.push('Google fetch failed');}
     // Deduplicate by subject+start (dual-synced events appear in both)
     const seen=new Set();
     allEvs=allEvs.filter(e=>{
@@ -2108,7 +2115,11 @@ async function loadCal(){
     // Sort by start time
     allEvs.sort((a,b)=>new Date(a.start?.dateTime||0).getTime()-new Date(b.start?.dateTime||0).getTime());
 
-    if(!allEvs.length){el.innerHTML='<div class="eld">No events this week.</div>';document.getElementById('sev').textContent='0';return;}
+    if(!allEvs.length){
+      const errMsg=errors.length?'<br><span style="font-size:11px;color:var(--red);font-family:var(--mono);">'+errors.join('<br>')+'</span>':'';
+      el.innerHTML='<div class="eld">No events in the next 30 days.'+errMsg+'</div>';
+      document.getElementById('sev').textContent='0';return;
+    }
     let html='',ld='';
     allEvs.forEach(e=>{
       const raw=e.start?.dateTime||'';
@@ -2145,7 +2156,7 @@ async function loadCal(){
     const tomorrow=new Date(today);tomorrow.setDate(tomorrow.getDate()+1);
     const todayCount=allEvs.filter(e=>{const d=new Date(e.start?.dateTime||0);return d>=today&&d<tomorrow;}).length;
     document.getElementById('sev').textContent=todayCount||allEvs.length;
-  }catch(e){el.innerHTML='<div class="eld">Error loading calendar.</div>';}
+  }catch(e){el.innerHTML='<div class="eld" style="color:var(--red);">Calendar error: '+esc(String(e)).substring(0,200)+'</div>';}
 }
 
 // ── CALENDAR EVENT CREATION ──
