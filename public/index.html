@@ -1170,6 +1170,16 @@ function deleteAlarm(id){
 }
 setInterval(tick,1000);tick();
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+// Safe interpolation for JS strings inside HTML attributes (e.g. onclick="func(${attrJsArg(x)})").
+// esc() is HTML-safe but NOT JS-safe: the browser decodes HTML entities before the JS parser
+// sees the attribute value, so an apostrophe in data like "Dr. O'Brien's report" rendered with
+// esc() becomes the literal apostrophe that terminates the inline JS string. JSON.stringify
+// produces a properly quoted+escaped JS string literal; HTML-escaping the result keeps it safe
+// inside an attribute delimiter.
+function attrJsArg(s){
+  const json=JSON.stringify(String(s==null?'':s));
+  return json.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 // ── GLOBAL SEARCH ──
 let gsTimer=null;
@@ -4034,7 +4044,7 @@ async function loadZoomRecordings(){
         </div>
         <div style="display:flex;gap:6px;align-items:center;">
           ${rec.share_url?`<a href="${esc(rec.share_url)}" target="_blank" class="ti-btn" style="text-decoration:none;">▶ Play</a>`:''}
-          ${hasTranscript?`<button class="ti-btn" style="background:var(--accent-glow);color:var(--accent);border-color:var(--accent);" onclick="processTranscript('${rec.id}','${esc(rec.topic||'')}')">🧠 Process</button>`:''}
+          ${hasTranscript?`<button class="ti-btn" style="background:var(--accent-glow);color:var(--accent);border-color:var(--accent);" onclick="processTranscript('${rec.id}',${attrJsArg(rec.topic||'')})">🧠 Process</button>`:''}
           <button class="ti-btn del" onclick="deleteRecording('${rec.id}')">🗑</button>
         </div>
       </div>`;
@@ -4104,7 +4114,7 @@ function renderProcessedTranscripts(){
       ${t.action_items&&t.action_items.length?`<div style="margin-bottom:10px;"><div style="font-size:11px;color:var(--accent);font-family:var(--mono);margin-bottom:6px;">ACTION ITEMS</div>
         ${t.action_items.map(ai=>`<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(42,46,58,0.3);">
           <div style="flex:1;font-size:13px;">${esc(ai.task||'')}${ai.owner?' <span style="color:var(--amber);font-size:11px;">→ '+esc(ai.owner)+'</span>':''}${ai.deadline?' <span style="color:var(--red);font-size:11px;">by '+esc(ai.deadline)+'</span>':''}</div>
-          <button class="ti-btn" style="padding:3px 8px;font-size:10px;" onclick="addZoomTask('${esc(ai.task||'')}','${esc(ai.owner||'')}','${esc(ai.deadline||'')}','${esc(t.topic||'')}')">+ Task</button>
+          <button class="ti-btn" style="padding:3px 8px;font-size:10px;" onclick="addZoomTask(${attrJsArg(ai.task||'')},${attrJsArg(ai.owner||'')},${attrJsArg(ai.deadline||'')},${attrJsArg(t.topic||'')})">+ Task</button>
         </div>`).join('')}</div>`:''}
       ${t.decisions&&t.decisions.length?`<div style="margin-bottom:10px;"><div style="font-size:11px;color:var(--green);font-family:var(--mono);margin-bottom:6px;">DECISIONS</div>
         ${t.decisions.map(d=>`<div style="font-size:12px;color:var(--text-dim);padding:4px 0;">• ${esc(d)}</div>`).join('')}</div>`:''}
