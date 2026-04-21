@@ -750,15 +750,25 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
       <button onclick="this.textContent='↻ Refreshing...';this.disabled=true;loadTasks().finally(()=>{this.textContent='↻ Refresh';this.disabled=false;})" style="padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;">↻ Refresh</button>
     </div>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
-    <button class="etb-f active" onclick="filterTasks('all',this)">All</button>
-    <button class="etb-f" onclick="filterTasks('todo',this)">To Do</button>
-    <button class="etb-f" onclick="filterTasks('in-progress',this)">In Progress</button>
-    <button class="etb-f" onclick="filterTasks('done',this)">Done</button>
-    <button class="etb-f" onclick="filterTasks('urgent',this)">Urgent</button>
-    <button class="etb-f" onclick="filterTasks('review',this)">📋 Review Queue</button>
-    <button class="etb-f" onclick="filterTasks('canceled',this)">🚫 Cancelled</button>
-    <button class="etb-f" onclick="filterTasks('archived',this)">Archived</button>
+  <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center;">
+    <button class="etb-f active" onclick="filterTasks('all',this)">All <span class="tf-count" data-tf="all"></span></button>
+    <button class="etb-f" onclick="filterTasks('todo',this)">To Do <span class="tf-count" data-tf="todo"></span></button>
+    <button class="etb-f" onclick="filterTasks('in-progress',this)">In Progress <span class="tf-count" data-tf="in-progress"></span></button>
+    <button class="etb-f" onclick="filterTasks('done',this)">Done <span class="tf-count" data-tf="done"></span></button>
+    <button class="etb-f" onclick="filterTasks('urgent',this)">Urgent <span class="tf-count" data-tf="urgent"></span></button>
+    <button class="etb-f" onclick="filterTasks('review',this)">📋 Review <span class="tf-count" data-tf="review"></span></button>
+    <button class="etb-f" onclick="filterTasks('canceled',this)">🚫 Cancelled <span class="tf-count" data-tf="canceled"></span></button>
+    <button class="etb-f" onclick="filterTasks('archived',this)">Archived <span class="tf-count" data-tf="archived"></span></button>
+    <div style="flex:1;"></div>
+    <select id="task-sort" onchange="sortAndRenderTasks(this.value)" style="padding:5px 8px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:11px;cursor:pointer;">
+      <option value="priority">Priority</option>
+      <option value="due-asc">Due Date ↑</option>
+      <option value="due-desc">Due Date ↓</option>
+      <option value="created-desc">Newest</option>
+      <option value="created-asc">Oldest</option>
+      <option value="alpha">A → Z</option>
+    </select>
+    <input id="task-search" type="text" placeholder="Search tasks..." oninput="filterTasksBySearch(this.value)" style="padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;width:160px;">
   </div>
   <!-- Cancelled Bucket Summary -->
   <div class="card" style="padding:0;overflow:hidden;">
@@ -3179,14 +3189,22 @@ async function loadTasks(){
 
 function renderTasks(){
   const list=document.getElementById('tlist');
-  let tasks=allTasks;
+  let tasks=[...allTasks];
   if(taskFilter==='urgent') tasks=tasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='archived'&&t.status!=='canceled');
   else if(taskFilter==='all') tasks=tasks.filter(t=>t.status!=='archived'&&t.status!=='canceled');
   else if(taskFilter==='archived') tasks=tasks.filter(t=>t.status==='archived');
   else tasks=tasks.filter(t=>t.status===taskFilter);
+  // Apply search
+  if(taskSearchTerm){
+    tasks=tasks.filter(t=>{
+      const haystack=((t.title||'')+(t.description||'')+(t.category||'')+(t.notes||'')).toLowerCase();
+      return haystack.includes(taskSearchTerm);
+    });
+  }
 
   if(!tasks.length){
     list.innerHTML='<div class="eld">'+(taskFilter==='all'?'No tasks yet. Click "+ Add Task" to get started.':'No tasks match this filter.')+'</div>';
+    updateFilterCounts();
     return;
   }
 
@@ -3249,14 +3267,72 @@ function renderTasks(){
     </div>`;
   });
   list.innerHTML=html;
+  updateFilterCounts();
 }
-
 function filterTasks(f,el){
   taskFilter=f;
   document.querySelectorAll('.etb-f').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   renderTasks();
   updateDashboardTasks();
+}
+
+let taskSearchTerm='';
+
+function filterTasksBySearch(term){
+  taskSearchTerm=term.toLowerCase();
+  renderTasks();
+}
+
+function sortAndRenderTasks(sortBy){
+  // Re-sort allTasks based on selected sort
+  const priorityOrder={urgent:0,high:1,normal:2,low:3};
+  if(sortBy==='priority'){
+    allTasks.sort((a,b)=>{
+      if(a.status==='done'&&b.status!=='done')return 1;
+      if(a.status!=='done'&&b.status==='done')return -1;
+      const pa=priorityOrder[a.priority]??2;const pb=priorityOrder[b.priority]??2;
+      if(pa!==pb)return pa-pb;
+      return new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime();
+    });
+  }else if(sortBy==='due-asc'){
+    allTasks.sort((a,b)=>{
+      const da=a.dueDate?new Date(a.dueDate).getTime():Infinity;
+      const db=b.dueDate?new Date(b.dueDate).getTime():Infinity;
+      return da-db;
+    });
+  }else if(sortBy==='due-desc'){
+    allTasks.sort((a,b)=>{
+      const da=a.dueDate?new Date(a.dueDate).getTime():0;
+      const db=b.dueDate?new Date(b.dueDate).getTime():0;
+      return db-da;
+    });
+  }else if(sortBy==='created-desc'){
+    allTasks.sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+  }else if(sortBy==='created-asc'){
+    allTasks.sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime());
+  }else if(sortBy==='alpha'){
+    allTasks.sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+  }
+  renderTasks();
+}
+
+function updateFilterCounts(){
+  const counts={
+    'all':allTasks.filter(t=>t.status!=='archived'&&t.status!=='canceled').length,
+    'todo':allTasks.filter(t=>t.status==='todo').length,
+    'in-progress':allTasks.filter(t=>t.status==='in-progress').length,
+    'done':allTasks.filter(t=>t.status==='done').length,
+    'urgent':allTasks.filter(t=>t.priority==='urgent'&&t.status!=='done'&&t.status!=='archived'&&t.status!=='canceled').length,
+    'review':allTasks.filter(t=>t.status==='review').length,
+    'canceled':allTasks.filter(t=>t.status==='canceled').length,
+    'archived':allTasks.filter(t=>t.status==='archived').length,
+  };
+  document.querySelectorAll('.tf-count').forEach(el=>{
+    const f=el.dataset.tf;
+    const c=counts[f]||0;
+    el.textContent=c>0?'('+c+')':'';
+  });
 }
 
 async function toggleTask(id){

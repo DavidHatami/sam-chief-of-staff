@@ -146,18 +146,18 @@ export default async (req: Request, context: Context) => {
     // ── 4. CREATE PREP TASK ──
     try {
       const taskStore = getStore({ name: "sam-tasks", consistency: "strong" });
-      const existing = (await taskStore.get("tasks", { type: "json" })) || [];
-      const taskId = "task_" + Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
-      existing.unshift({
+      const taskId = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+      const task = {
         id: taskId,
         title: `Prep for ${type || "Meeting"}: ${name}${org ? " (" + org + ")" : ""}`,
         description: `${dateLabel} at ${timeLabel}\n${email}${zoomJoinUrl ? "\nZoom: " + zoomJoinUrl : ""}`,
         status: "todo", priority: "high", category: "Meeting Prep",
         dueDate: startDT.toISOString().split("T")[0],
-        created: new Date().toISOString(), updated: new Date().toISOString(),
-        subtasks: [], notes: notes || "", source: "booking", sourceId: zoomMeetingId || null,
-      });
-      await taskStore.set("tasks", JSON.stringify(existing));
+        notes: notes || "",
+        subtasks: [],
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      };
+      await taskStore.setJSON(taskId, task);
       results.task = { success: true, id: taskId };
     } catch (e) { results.task = { success: false, error: String(e) }; }
 

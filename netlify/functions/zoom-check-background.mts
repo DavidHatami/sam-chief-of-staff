@@ -254,9 +254,6 @@ export default async (req: Request) => {
       );
 
       // 4e. Create tasks for each action item with status "review"
-      const existingData = await taskStore.get("tasks", { type: "json" });
-      const tasks: any[] = (existingData as any[]) || [];
-
       const meetingDate = rec.start_time
         ? new Date(rec.start_time).toLocaleDateString("en-US", {
             month: "short",
@@ -265,11 +262,11 @@ export default async (req: Request) => {
           })
         : "";
 
+      let taskCount = 0;
       for (const item of parsed.action_items || []) {
+        const taskId = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
         const newTask = {
-          id:
-            Date.now().toString(36) +
-            Math.random().toString(36).substring(2, 8),
+          id: taskId,
           title: item.task || "Zoom action item",
           description: `From Zoom: "${rec.topic || "Meeting"}" (${meetingDate})\nOwner: ${item.owner || "Unassigned"}\nSummary: ${parsed.summary || ""}\n\nAuto-extracted by SAM`,
           priority: item.priority || "normal",
@@ -278,39 +275,34 @@ export default async (req: Request) => {
           dueDate: item.deadline && item.deadline !== "null" && item.deadline !== "ASAP"
             ? item.deadline
             : "",
+          notes: "",
+          subtasks: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          source: "zoom-auto",
-          meetingId: String(rec.id),
-          meetingTopic: rec.topic || "",
         };
-        tasks.push(newTask);
+        await taskStore.setJSON(taskId, newTask);
+        taskCount++;
       }
 
       // Also create follow-up tasks
       for (const followUp of parsed.follow_ups || []) {
+        const taskId = Date.now().toString(36) + Math.random().toString(36).substring(2, 8) + "f";
         const newTask = {
-          id:
-            Date.now().toString(36) +
-            Math.random().toString(36).substring(2, 8) +
-            "f",
+          id: taskId,
           title: "Follow up: " + followUp,
           description: `From Zoom: "${rec.topic || "Meeting"}" (${meetingDate})\nAuto-extracted by SAM`,
           priority: "normal",
           status: "review",
           category: "Zoom Auto-Extract",
           dueDate: "",
+          notes: "",
+          subtasks: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          source: "zoom-auto",
-          meetingId: String(rec.id),
-          meetingTopic: rec.topic || "",
         };
-        tasks.push(newTask);
+        await taskStore.setJSON(taskId, newTask);
+        taskCount++;
       }
-
-      // Save tasks back to Blobs
-      await taskStore.setJSON("tasks", tasks);
 
       // Mark as processed
       processedIds.push(String(rec.id));
