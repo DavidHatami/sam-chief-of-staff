@@ -156,7 +156,7 @@ export default async (req: Request, context: Context) => {
         'starred': 'STARRED', 'important': 'IMPORTANT'
       };
       const labelId = labelMap[folder] || 'INBOX';
-      const fetchCount = Math.min(parseInt(top), 20); // Cap at 20 to prevent N+1 explosion
+      const fetchCount = Math.min(parseInt(top), 25);
       const listResp = await fetch(
         `${gmailBase}/messages?labelIds=${labelId}&maxResults=${fetchCount}`,
         { headers: { Authorization: `Bearer ${token}` } }

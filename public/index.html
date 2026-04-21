@@ -353,7 +353,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
     <div id="email-left" class="card" style="padding:0;overflow:hidden;flex:0 0 380px;min-width:280px;max-width:60%;border-radius:10px 0 0 10px;border-right:none;"><div class="el" id="elist" style="height:calc(100vh - 240px);overflow-y:auto;"><div class="eld">Loading emails...</div></div></div>
     <div id="email-drag" style="width:6px;cursor:col-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;" onmousedown="startDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:30px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
     <div id="email-right" class="card" style="flex:1;overflow-y:auto;height:calc(100vh - 240px);border-radius:0 10px 10px 0;border-left:none;display:flex;flex-direction:column;">
-      <div class="eld" id="ereader-empty">Click an email to read it</div>
+      <div class="eld" id="ereader-empty" style="display:none;"></div>
       <div id="ereader-content" style="display:none;">
         <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">
           <div id="er-subject" style="font-size:16px;font-weight:600;margin-bottom:6px;"></div>
@@ -1357,7 +1357,7 @@ function showEmailSkeleton(){
 // Preload all accounts in parallel on first email page visit
 async function preloadAllEmail(){
   const readable=EMAIL_ACCOUNTS.filter(a=>a.apiBase);
-  const tops={m365:'25',gmail:'15',yahoo:'20'};
+  const tops={m365:'100',gmail:'25',yahoo:'25'};
   const results=await Promise.allSettled(readable.map(a=>fetch(a.apiBase+'/mail?folder=inbox&top='+(tops[a.type]||'20')).then(r=>r.json())));
   results.forEach((r,i)=>{if(r.status==='fulfilled'&&!r.value?.error){const id=readable[i].id;emailAccountCache[id]=r.value.value||[];emailCacheTs[id]=Date.now();}});
 }
@@ -1365,6 +1365,7 @@ async function preloadAllEmail(){
 function renderEmailList(msgs){
   const list=document.getElementById('elist');
   let ur=0,html='';
+  if(!msgs||!msgs.length){list.innerHTML='<div class="eld">No emails.</div>';return;}
   msgs.forEach(m=>{
     const u=!m.isRead;if(u)ur++;
     const fn=m.from?.emailAddress?.name||m.from?.emailAddress?.address||'unknown';
@@ -1375,15 +1376,16 @@ function renderEmailList(msgs){
     const mid=encodeURIComponent(m.id||'');
     html+=`<div class="ei${u?' unread':''}" onclick="readEmail('${mid}',this)" style="cursor:pointer;"><div class="edot ${u?'u':'r'}"></div><div style="min-width:0"><div class="ef">${esc(fn)}</div><div class="es">${esc(subj)}</div><div class="ep">${esc(prev.substring(0,120))}</div></div><div class="et">${ts}</div></div>`;
   });
-  list.innerHTML=html||'<div class="eld">No emails.</div>';
+  list.innerHTML=html;
   document.getElementById('ecount').textContent=msgs.length+' messages'+(ur?' ('+ur+' unread)':'');
   document.getElementById('sur').textContent=ur;
   const b=document.getElementById('ebadge');if(ur>0){b.textContent=ur;b.style.display='inline';}else{b.style.display='none';}
   const de=document.getElementById('demails');
-  const items=list.querySelectorAll('.ei');
-  let dhtml='';for(let i=0;i<Math.min(8,items.length);i++)dhtml+=items[i].outerHTML;
-  de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
+  if(de){const items=list.querySelectorAll('.ei');let dhtml='';for(let i=0;i<Math.min(8,items.length);i++)dhtml+=items[i].outerHTML;de.innerHTML=dhtml||'<div class="eld">No emails.</div>';}
   updateFlagIndicators();
+  // Auto-load the first email immediately — no waiting for click
+  const firstRow=list.querySelector('.ei');
+  if(firstRow)setTimeout(()=>firstRow.click(),80);
 }
 
 function sortEmails(val){
@@ -1508,7 +1510,7 @@ async function fetchEmailsFromAPI(folder){
     if(acctType==='m365'){if(f==='sent'||f==='sentitems')f='sentitems';else if(f==='trash'||f==='deleteditems')f='deleteditems';else if(f==='drafts')f='drafts';else if(f==='archive')f='archive';else f='inbox';}
     else if(acctType==='gmail'){if(f==='sent'||f==='sentitems')f='sent';else if(f==='trash')f='trash';else if(f==='drafts')f='drafts';else f='inbox';}
     else{if(f==='sent'||f==='sentitems')f='sent';else f='inbox';}
-    const top=acctType==='gmail'?'15':acctType==='yahoo'?'20':'25';
+    const top=acctType==='gmail'?'25':acctType==='yahoo'?'25':'100';
     const r=await fetch(apiBase+'/mail?folder='+f+'&top='+top);
     const d=await r.json();
     if(d.error){document.getElementById('elist').innerHTML='<div class="eld">'+esc(String(d.error))+'</div>';return null;}
@@ -2372,7 +2374,7 @@ function switchAcct(acctId,el){
   if(el)el.classList.add('active');
   const reader=document.getElementById('ereader-empty');
   const content=document.getElementById('ereader-content');
-  if(reader){reader.style.display='block';reader.textContent='Click an email to read it';}
+  if(reader){reader.style.display='block';reader.textContent='Loading...';}
   if(content)content.style.display='none';
   currentMailAPI=acctId;
   loadE('inbox',document.getElementById('btn-inbox'));
