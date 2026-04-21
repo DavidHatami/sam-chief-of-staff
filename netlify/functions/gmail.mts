@@ -161,7 +161,14 @@ export default async (req: Request, context: Context) => {
         `${gmailBase}/messages?labelIds=${labelId}&maxResults=${fetchCount}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      if (!listResp.ok) {
+        const errText = await listResp.text();
+        return new Response(JSON.stringify({ error: `Gmail list failed: ${errText.substring(0, 200)}` }), { status: listResp.status, headers });
+      }
       const listData = await listResp.json();
+      if (listData.error) {
+        return new Response(JSON.stringify({ error: `Gmail: ${listData.error.message || listData.error}` }), { status: 400, headers });
+      }
       const messageIds = listData.messages || [];
 
       // Fetch metadata in parallel chunks of 5 for controlled concurrency
@@ -173,30 +180,37 @@ export default async (req: Request, context: Context) => {
       for(const chunk of chunks){
         const batch = await Promise.all(
           chunk.map(async (m: { id: string }) => {
-            const r = await fetch(
-              `${gmailBase}/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-              { headers: { Authorization: `Bearer ${token}` } }
-            );
-            const msg = await r.json();
-            const hdrs = msg.payload?.headers || [];
-            const fromRaw = getHeader(hdrs, "From");
-            const nameMatch = fromRaw.match(/^(.+?)\s*<(.+?)>$/);
-            return {
-              id: msg.id,
-              subject: getHeader(hdrs, "Subject") || "(no subject)",
-              from: {
-                emailAddress: {
-                  name: nameMatch ? nameMatch[1].replace(/"/g, "").trim() : fromRaw,
-                  address: nameMatch ? nameMatch[2] : fromRaw,
+            try {
+              const r = await fetch(
+                `${gmailBase}/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (!r.ok) return null;
+              const msg = await r.json();
+              if (msg.error) return null;
+              const hdrs = msg.payload?.headers || [];
+              const fromRaw = getHeader(hdrs, "From");
+              const nameMatch = fromRaw.match(/^(.+?)\s*<(.+?)>$/);
+              return {
+                id: msg.id,
+                subject: getHeader(hdrs, "Subject") || "(no subject)",
+                from: {
+                  emailAddress: {
+                    name: nameMatch ? nameMatch[1].replace(/"/g, "").trim() : fromRaw,
+                    address: nameMatch ? nameMatch[2] : fromRaw,
+                  },
                 },
-              },
-              receivedDateTime: getHeader(hdrs, "Date"),
-              isRead: !msg.labelIds?.includes("UNREAD"),
-              bodyPreview: msg.snippet || "",
-            };
+                receivedDateTime: getHeader(hdrs, "Date"),
+                isRead: !msg.labelIds?.includes("UNREAD"),
+                bodyPreview: msg.snippet || "",
+              };
+            } catch (e) {
+              return null;
+            }
           })
         );
-        messages.push(...batch);
+        // Filter out null responses (individual failures)
+        messages.push(...batch.filter(m => m !== null));
       }
 
       return new Response(JSON.stringify({ value: messages }), { headers });

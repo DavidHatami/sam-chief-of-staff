@@ -73,17 +73,34 @@ export default async (req: Request, context: Context) => {
       const msgId = url.searchParams.get("id");
       const folder = url.searchParams.get("folder") || "inbox";
       const top = parseInt(url.searchParams.get("top") || "15");
+      const isPrefetch = url.searchParams.get("prefetch") === "1";
 
       client = await getImapClient();
 
-      const mailbox =
-        folder === "sentitems" || folder === "sent" ? "Sent" : "INBOX";
+      // Map folder param to Yahoo mailbox names
+      const folderMap: Record<string, string> = {
+        "inbox": "INBOX",
+        "sent": "Sent",
+        "sentitems": "Sent",
+        "drafts": "Draft",
+        "trash": "Trash",
+      };
+      const mailbox = folderMap[folder] || "INBOX";
       const lock = await client.getMailboxLock(mailbox);
 
       try {
         // Single message — full body
         if (msgId) {
           const uid = parseInt(msgId);
+          // Fetch flags first to determine real isRead state
+          let wasRead = false;
+          try {
+            for await (const m of client.fetch(String(uid), { uid: true, flags: true })) {
+              wasRead = m.flags.has("\\Seen");
+              break;
+            }
+          } catch (e) {}
+
           const source = await client.download(String(uid), undefined, {
             uid: true,
           });
@@ -114,7 +131,7 @@ export default async (req: Request, context: Context) => {
               emailAddress: { name: fromName, address: fromAddr },
             },
             receivedDateTime: parsed.date?.toISOString() || "",
-            isRead: true,
+            isRead: wasRead,
             bodyPreview: parsed.text?.substring(0, 300) || "",
             body: {
               contentType: parsed.html ? "html" : "Text",
@@ -123,12 +140,15 @@ export default async (req: Request, context: Context) => {
             toRecipients,
           };
 
-          // Mark as seen
-          try {
-            await client.messageFlagsAdd(String(uid), ["\\Seen"], {
-              uid: true,
-            });
-          } catch (e) {}
+          // Mark as seen ONLY on real read (not prefetch)
+          if (!isPrefetch) {
+            try {
+              await client.messageFlagsAdd(String(uid), ["\\Seen"], {
+                uid: true,
+              });
+              result.isRead = true;
+            } catch (e) {}
+          }
 
           lock.release();
           await client.logout();
@@ -142,6 +162,11 @@ export default async (req: Request, context: Context) => {
         // Get message sequence range (latest N messages)
         const status = await client.status(mailbox, { messages: true });
         const total = status.messages || 0;
+        if (total === 0) {
+          lock.release();
+          await client.logout();
+          return new Response(JSON.stringify({ value: [] }), { headers });
+        }
         const startSeq = Math.max(1, total - top + 1);
 
         // Fetch in reverse order (newest first) — envelope+flags only, no body
@@ -175,6 +200,30 @@ export default async (req: Request, context: Context) => {
         lock.release();
         await client.logout();
         return new Response(JSON.stringify({ value: messages }), { headers });
+      } catch (err) {
+        lock.release();
+        throw err;
+      }
+    }
+
+    // ── MARK READ/UNREAD (Yahoo) ──
+    if (path === "/mail/read" && req.method === "PATCH") {
+      const body = await req.json();
+      const { id: msgId, isRead } = body;
+      if (!msgId) {
+        return new Response(JSON.stringify({ error: "Missing id" }), { status: 400, headers });
+      }
+      client = await getImapClient();
+      const lock = await client.getMailboxLock("INBOX");
+      try {
+        if (isRead) {
+          await client.messageFlagsAdd(String(msgId), ["\\Seen"], { uid: true });
+        } else {
+          await client.messageFlagsRemove(String(msgId), ["\\Seen"], { uid: true });
+        }
+        lock.release();
+        await client.logout();
+        return new Response(JSON.stringify({ success: true }), { headers });
       } catch (err) {
         lock.release();
         throw err;

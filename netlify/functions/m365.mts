@@ -97,6 +97,12 @@ export default async (req: Request, context: Context) => {
           `${graphBase}/messages/${msgId}?$select=subject,from,toRecipients,receivedDateTime,isRead,body,bodyPreview`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
+        if (!resp.ok) {
+          const errText = await resp.text();
+          return new Response(JSON.stringify({ error: `M365 read failed: ${errText.substring(0, 200)}` }), {
+            status: resp.status, headers: { "Content-Type": "application/json" },
+          });
+        }
         const data = await resp.json();
         // Mark as read ONLY on real read, not prefetch
         if (!isPrefetch) {
@@ -115,6 +121,12 @@ export default async (req: Request, context: Context) => {
         `${graphBase}/mailFolders/${folder}/messages?$top=${top}&$select=subject,from,receivedDateTime,isRead,bodyPreview&$orderby=receivedDateTime DESC`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      if (!resp.ok) {
+        const errText = await resp.text();
+        return new Response(JSON.stringify({ error: `M365 list failed: ${errText.substring(0, 200)}` }), {
+          status: resp.status, headers: { "Content-Type": "application/json" },
+        });
+      }
       const data = await resp.json();
       return new Response(JSON.stringify(data), {
         headers: { "Content-Type": "application/json" },
@@ -234,6 +246,12 @@ export default async (req: Request, context: Context) => {
         `${graphBase}/calendarView?startDateTime=${start}&endDateTime=${end}&$select=subject,start,end,location,organizer,attendees,isOnlineMeeting&$orderby=start/dateTime&$top=50`,
         { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="Eastern Standard Time"' } }
       );
+      if (!resp.ok) {
+        const errText = await resp.text();
+        return new Response(JSON.stringify({ error: `M365 calendar failed: ${errText.substring(0, 200)}` }), {
+          status: resp.status, headers: { "Content-Type": "application/json" },
+        });
+      }
       const data = await resp.json();
       return new Response(JSON.stringify(data), {
         headers: { "Content-Type": "application/json" },
