@@ -150,59 +150,96 @@ export default async (req: Request, context: Context) => {
       }
 
       // List messages
-      const labelId = folder === "sentitems" || folder === "sent" ? "SENT" : "INBOX";
+      const labelMap: Record<string,string> = {
+        'inbox': 'INBOX', 'sent': 'SENT', 'sentitems': 'SENT',
+        'trash': 'TRASH', 'drafts': 'DRAFT', 'spam': 'SPAM',
+        'starred': 'STARRED', 'important': 'IMPORTANT'
+      };
+      const labelId = labelMap[folder] || 'INBOX';
+      const fetchCount = Math.min(parseInt(top), 20); // Cap at 20 to prevent N+1 explosion
       const listResp = await fetch(
-        `${gmailBase}/messages?labelIds=${labelId}&maxResults=${top}`,
+        `${gmailBase}/messages?labelIds=${labelId}&maxResults=${fetchCount}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const listData = await listResp.json();
       const messageIds = listData.messages || [];
 
-      // Fetch each message's metadata (batch of headers only)
-      const messages = await Promise.all(
-        messageIds.slice(0, parseInt(top)).map(async (m: { id: string }) => {
-          const r = await fetch(
-            `${gmailBase}/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          const msg = await r.json();
-          const hdrs = msg.payload?.headers || [];
-          const fromRaw = getHeader(hdrs, "From");
-          // Parse "Name <email>" format
-          const nameMatch = fromRaw.match(/^(.+?)\s*<(.+?)>$/);
-          return {
-            id: msg.id,
-            subject: getHeader(hdrs, "Subject") || "(no subject)",
-            from: {
-              emailAddress: {
-                name: nameMatch ? nameMatch[1].replace(/"/g, "").trim() : fromRaw,
-                address: nameMatch ? nameMatch[2] : fromRaw,
+      // Fetch metadata in parallel chunks of 5 for controlled concurrency
+      const chunks: {id:string}[][] = [];
+      for(let i=0;i<messageIds.length;i+=5){
+        chunks.push(messageIds.slice(i,i+5));
+      }
+      const messages: any[] = [];
+      for(const chunk of chunks){
+        const batch = await Promise.all(
+          chunk.map(async (m: { id: string }) => {
+            const r = await fetch(
+              `${gmailBase}/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const msg = await r.json();
+            const hdrs = msg.payload?.headers || [];
+            const fromRaw = getHeader(hdrs, "From");
+            const nameMatch = fromRaw.match(/^(.+?)\s*<(.+?)>$/);
+            return {
+              id: msg.id,
+              subject: getHeader(hdrs, "Subject") || "(no subject)",
+              from: {
+                emailAddress: {
+                  name: nameMatch ? nameMatch[1].replace(/"/g, "").trim() : fromRaw,
+                  address: nameMatch ? nameMatch[2] : fromRaw,
+                },
               },
-            },
-            receivedDateTime: getHeader(hdrs, "Date"),
-            isRead: !msg.labelIds?.includes("UNREAD"),
-            bodyPreview: msg.snippet || "",
-          };
-        })
-      );
+              receivedDateTime: getHeader(hdrs, "Date"),
+              isRead: !msg.labelIds?.includes("UNREAD"),
+              bodyPreview: msg.snippet || "",
+            };
+          })
+        );
+        messages.push(...batch);
+      }
 
       return new Response(JSON.stringify({ value: messages }), { headers });
+    }
+
+    // ── MARK READ/UNREAD ──
+    if (path === "/mail/read" && req.method === "PATCH") {
+      const body = await req.json();
+      const { id: msgId, isRead } = body;
+      if (!msgId) return new Response(JSON.stringify({ error: "Missing id" }), { status: 400, headers });
+      const action = isRead ? "removeLabelIds" : "addLabelIds";
+      const resp = await fetch(`${gmailBase}/messages/${msgId}/modify`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ [action]: ["UNREAD"] }),
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers });
+      }
+      return new Response(JSON.stringify({ success: true }), { headers });
     }
 
     // ── SEND EMAIL ──
     if (path === "/mail/send" && req.method === "POST") {
       const body = await req.json();
-      const { to, subject, content } = body;
+      const { to, cc, bcc, subject, content } = body;
       const toList = Array.isArray(to) ? to : [to];
+      const ccList = Array.isArray(cc) ? cc.filter(Boolean) : (cc ? [cc] : []);
+      const bccList = Array.isArray(bcc) ? bcc.filter(Boolean) : (bcc ? [bcc] : []);
 
-      const rawEmail = [
+      const emailLines = [
         `To: ${toList.join(", ")}`,
+      ];
+      if (ccList.length) emailLines.push(`Cc: ${ccList.join(", ")}`);
+      if (bccList.length) emailLines.push(`Bcc: ${bccList.join(", ")}`);
+      emailLines.push(
         `Subject: ${subject}`,
         `Content-Type: text/plain; charset="UTF-8"`,
         "",
         content,
-      ].join("\r\n");
-
+      );
+      const rawEmail = emailLines.join("\r\n");
       const encoded = encodeBase64Url(rawEmail);
 
       const resp = await fetch(`${gmailBase}/messages/send`, {

@@ -222,16 +222,32 @@ export default async (req: Request, context: Context) => {
 
     // ── SEND EMAIL VIA SMTP ──
     if (path === "/mail/send" && req.method === "POST") {
-      // Yahoo SMTP requires nodemailer — for now return guidance
-      // IMAP is read-only, SMTP is the send path
-      return new Response(
-        JSON.stringify({
-          error:
-            "Yahoo send requires SMTP integration (nodemailer). Use M365 or Gmail to send for now.",
-          workaround: "Reply/Forward via admin@edupolicy.ai or dh30111@gmail.com",
-        }),
-        { status: 501, headers }
-      );
+      const { createTransport } = await import("nodemailer");
+      const email = Netlify.env.get("YAHOO_EMAIL") || "";
+      const appPassword = Netlify.env.get("YAHOO_APP_PASSWORD") || "";
+      const body = await req.json();
+      const { to, cc, bcc, subject, content, contentType } = body;
+      if (!to || !content) {
+        return new Response(JSON.stringify({ error: "Missing to or content" }), { status: 400, headers });
+      }
+      const toList = Array.isArray(to) ? to : [to];
+      const ccList = Array.isArray(cc) ? cc.filter(Boolean) : (cc ? [cc] : []);
+      const bccList = Array.isArray(bcc) ? bcc.filter(Boolean) : (bcc ? [bcc] : []);
+      const transporter = createTransport({
+        host: "smtp.mail.yahoo.com",
+        port: 465,
+        secure: true,
+        auth: { user: email, pass: appPassword },
+      });
+      await transporter.sendMail({
+        from: `"Dr. David Hatami" <${email}>`,
+        to: toList.join(", "),
+        ...(ccList.length ? { cc: ccList.join(", ") } : {}),
+        ...(bccList.length ? { bcc: bccList.join(", ") } : {}),
+        subject: subject || "(No subject)",
+        ...(contentType === "HTML" ? { html: content } : { text: content }),
+      });
+      return new Response(JSON.stringify({ success: true, message: "Email sent via Yahoo SMTP" }), { status: 200, headers });
     }
 
     return new Response(

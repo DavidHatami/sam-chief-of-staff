@@ -118,12 +118,31 @@ export default async (req: Request, context: Context) => {
       });
     }
 
+    // ── MARK READ/UNREAD ──
+    if (path === "/mail/read" && req.method === "PATCH") {
+      const body = await req.json();
+      const { id: msgId, isRead } = body;
+      if (!msgId) {
+        return new Response(JSON.stringify({ error: "Missing message id" }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+      const resp = await fetch(`${graphBase}/messages/${msgId}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ isRead }),
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        return new Response(JSON.stringify({ error: err }), { status: resp.status, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
     // ── SEND EMAIL ──
     if (path === "/mail/send" && req.method === "POST") {
       const body = await req.json();
-      const { to, subject, content, contentType } = body;
+      const { to, cc, bcc, subject, content, contentType } = body;
 
-      const message = {
+      const message: Record<string, unknown> = {
         message: {
           subject,
           body: { contentType: contentType || "Text", content },
@@ -133,6 +152,16 @@ export default async (req: Request, context: Context) => {
         },
         saveToSentItems: true,
       };
+      // Add CC
+      const ccList = Array.isArray(cc) ? cc.filter(Boolean) : (cc ? [cc] : []);
+      if (ccList.length) {
+        (message.message as any).ccRecipients = ccList.map((email: string) => ({ emailAddress: { address: email } }));
+      }
+      // Add BCC
+      const bccList = Array.isArray(bcc) ? bcc.filter(Boolean) : (bcc ? [bcc] : []);
+      if (bccList.length) {
+        (message.message as any).bccRecipients = bccList.map((email: string) => ({ emailAddress: { address: email } }));
+      }
 
       const resp = await fetch(`${graphBase}/sendMail`, {
         method: "POST",

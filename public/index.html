@@ -339,8 +339,18 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   <div class="etb">
     <button class="active" id="btn-inbox" onclick="currentFolder='inbox';loadE('inbox',this)">Inbox</button>
     <button id="btn-sent" onclick="currentFolder='sentitems';loadE('sentitems',this)">Sent</button>
+    <button id="btn-drafts" onclick="currentFolder='drafts';loadE('drafts',this)">Drafts</button>
+    <button id="btn-trash" onclick="currentFolder='trash';loadE('trash',this)">🗑 Trash</button>
     <button id="btn-flagged" onclick="showFlagged(this)">📌 Flagged</button>
+    <button onclick="openNewCompose()" style="padding:7px 14px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;">✉️ Compose</button>
     <div class="sp"></div><div class="ec" id="ecount"></div>
+    <select id="email-sort" onchange="sortEmails(this.value)" style="padding:5px 8px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:11px;cursor:pointer;">
+      <option value="date-desc">Newest</option>
+      <option value="date-asc">Oldest</option>
+      <option value="unread">Unread First</option>
+      <option value="sender-az">Sender A→Z</option>
+    </select>
+    <input id="email-search" type="text" placeholder="Search emails..." oninput="filterEmails(this.value)" style="padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;width:160px;">
     <button onclick="loadE(currentFolder,document.getElementById(currentFolder==='sentitems'?'btn-sent':'btn-inbox'))" style="padding:7px 14px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'" >↻ Refresh</button>
   </div>
   <div id="email-split" style="display:flex;gap:0;min-height:calc(100vh - 220px);position:relative;">
@@ -364,6 +374,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
           <button class="ti-btn" onclick="extractTask()" style="padding:5px 12px;background:var(--accent-glow);color:var(--accent);border-color:var(--accent);">✅ Extract Task</button>
           <button class="ti-btn del" onclick="deleteEmail()" style="padding:5px 12px;" id="btn-delete-email">🗑 Delete</button>
           <button class="ti-btn" onclick="toggleFlag()" style="padding:5px 12px;" id="btn-flag-email">📌 Pin</button>
+          <button class="ti-btn" onclick="toggleReadStatus()" style="padding:5px 12px;" id="btn-readtoggle">📩 Mark Unread</button>
         </div>
         <div id="er-compose" style="display:none;margin-bottom:12px;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;">
           <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
@@ -372,11 +383,20 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
               <option value="m365">admin@edupolicy.ai (M365)</option>
               <option value="dhatami">dhatami@edupolicy.ai</option>
               <option value="gmail">dh30111@gmail.com (Gmail)</option>
+              <option value="yahoo">dh30111@yahoo.com (Yahoo)</option>
             </select>
           </div>
           <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
             <label style="font-size:11px;color:var(--text-muted);width:40px;">To:</label>
             <input id="ec-to" type="text" style="flex:1;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+            <label style="font-size:11px;color:var(--text-muted);width:40px;">CC:</label>
+            <input id="ec-cc" type="text" placeholder="Optional" style="flex:1;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+            <label style="font-size:11px;color:var(--text-muted);width:40px;">BCC:</label>
+            <input id="ec-bcc" type="text" placeholder="Optional" style="flex:1;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
           </div>
           <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
             <label style="font-size:11px;color:var(--text-muted);width:40px;">Subj:</label>
@@ -1275,38 +1295,150 @@ async function sendSAM(){
 let eLoaded=false;
 let currentMailAPI='m365'; // 'm365', 'gmail', or 'yahoo'
 let currentFolder='inbox';
+let allEmailsCache=[];
+let emailSearchTerm='';
+
+function renderEmailList(msgs){
+  const list=document.getElementById('elist');
+  let ur=0,html='';
+  msgs.forEach(m=>{
+    const u=!m.isRead;if(u)ur++;
+    const fn=m.from?.emailAddress?.name||m.from?.emailAddress?.address||'unknown';
+    const subj=m.subject||'(no subject)';
+    const prev=m.bodyPreview||'';
+    const dt=new Date(m.receivedDateTime);
+    const ts=dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+    const mid=encodeURIComponent(m.id||'');
+    html+=`<div class="ei${u?' unread':''}" onclick="readEmail('${mid}',this)" style="cursor:pointer;"><div class="edot ${u?'u':'r'}"></div><div style="min-width:0"><div class="ef">${esc(fn)}</div><div class="es">${esc(subj)}</div><div class="ep">${esc(prev.substring(0,120))}</div></div><div class="et">${ts}</div></div>`;
+  });
+  list.innerHTML=html||'<div class="eld">No emails.</div>';
+  document.getElementById('ecount').textContent=msgs.length+' messages'+(ur?' ('+ur+' unread)':'');
+  document.getElementById('sur').textContent=ur;
+  const b=document.getElementById('ebadge');if(ur>0){b.textContent=ur;b.style.display='inline';}else{b.style.display='none';}
+  const de=document.getElementById('demails');
+  const items=list.querySelectorAll('.ei');
+  let dhtml='';for(let i=0;i<Math.min(8,items.length);i++)dhtml+=items[i].outerHTML;
+  de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
+  updateFlagIndicators();
+}
+
+function sortEmails(val){
+  if(!allEmailsCache.length)return;
+  let sorted=[...allEmailsCache];
+  if(val==='date-desc') sorted.sort((a,b)=>new Date(b.receivedDateTime)-new Date(a.receivedDateTime));
+  else if(val==='date-asc') sorted.sort((a,b)=>new Date(a.receivedDateTime)-new Date(b.receivedDateTime));
+  else if(val==='unread') sorted.sort((a,b)=>{if(!a.isRead&&b.isRead)return -1;if(a.isRead&&!b.isRead)return 1;return new Date(b.receivedDateTime)-new Date(a.receivedDateTime);});
+  else if(val==='sender-az') sorted.sort((a,b)=>{const na=(a.from?.emailAddress?.name||a.from?.emailAddress?.address||'').toLowerCase();const nb=(b.from?.emailAddress?.name||b.from?.emailAddress?.address||'').toLowerCase();return na.localeCompare(nb);});
+  if(emailSearchTerm) sorted=sorted.filter(m=>emailMatchesSearch(m,emailSearchTerm));
+  renderEmailList(sorted);
+}
+
+function emailMatchesSearch(m,term){
+  const t=term.toLowerCase();
+  const subj=(m.subject||'').toLowerCase();
+  const from=(m.from?.emailAddress?.name||'').toLowerCase()+(m.from?.emailAddress?.address||'').toLowerCase();
+  const prev=(m.bodyPreview||'').toLowerCase();
+  return subj.includes(t)||from.includes(t)||prev.includes(t);
+}
+
+function filterEmails(term){
+  emailSearchTerm=term;
+  if(!allEmailsCache.length)return;
+  const sortVal=document.getElementById('email-sort').value;
+  let filtered=[...allEmailsCache];
+  if(term) filtered=filtered.filter(m=>emailMatchesSearch(m,term));
+  // Re-apply current sort
+  if(sortVal==='date-asc') filtered.sort((a,b)=>new Date(a.receivedDateTime)-new Date(b.receivedDateTime));
+  else if(sortVal==='unread') filtered.sort((a,b)=>{if(!a.isRead&&b.isRead)return -1;if(a.isRead&&!b.isRead)return 1;return new Date(b.receivedDateTime)-new Date(a.receivedDateTime);});
+  else if(sortVal==='sender-az') filtered.sort((a,b)=>{const na=(a.from?.emailAddress?.name||'').toLowerCase();const nb=(b.from?.emailAddress?.name||'').toLowerCase();return na.localeCompare(nb);});
+  renderEmailList(filtered);
+}
+
+function openNewCompose(){
+  // Reset reader pane and show compose
+  const content=document.getElementById('ereader-content');
+  const empty=document.getElementById('ereader-empty');
+  if(empty)empty.style.display='none';
+  if(content)content.style.display='block';
+  document.getElementById('er-subject').textContent='New Email';
+  document.getElementById('er-from').textContent='';
+  document.getElementById('er-date').textContent='';
+  document.getElementById('er-to').textContent='';
+  document.getElementById('er-body').innerHTML='';
+  // Clear action buttons except compose area
+  const compose=document.getElementById('er-compose');
+  document.getElementById('ec-to').value='';
+  document.getElementById('ec-subj').value='';
+  document.getElementById('ec-body').value='';
+  if(document.getElementById('ec-cc'))document.getElementById('ec-cc').value='';
+  if(document.getElementById('ec-bcc'))document.getElementById('ec-bcc').value='';
+  // Auto-select the right From based on current account
+  const fromSel=document.getElementById('ec-from');
+  if(currentMailAPI==='gmail')fromSel.value='gmail';
+  else if(currentMailAPI==='yahoo')fromSel.value='yahoo';
+  else fromSel.value='m365';
+  compose.style.display='block';
+  document.getElementById('ec-to').focus();
+}
+
+async function toggleReadStatus(){
+  if(!currentEmail||!currentEmail.id)return;
+  const isRead=currentEmail.isRead!==false;
+  const newStatus=!isRead;
+  const apiBase=currentMailAPI==='gmail'?'/api/gmail':currentMailAPI==='yahoo'?'/api/yahoo':'/api/m365';
+  try{
+    const r=await fetch(apiBase+'/mail/read',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:currentEmail.id,isRead:newStatus})});
+    const d=await r.json();
+    if(d.success){
+      currentEmail.isRead=newStatus;
+      // Update cache
+      const ci=allEmailsCache.findIndex(m=>m.id===currentEmail.id);
+      if(ci>=0)allEmailsCache[ci].isRead=newStatus;
+      // Update visual
+      const rows=document.querySelectorAll('.ei');
+      rows.forEach(row=>{if(row.style.borderLeft&&row.style.borderLeft.includes('accent')){
+        if(newStatus){row.classList.remove('unread');const dot=row.querySelector('.edot');if(dot)dot.className='edot r';}
+        else{row.classList.add('unread');const dot=row.querySelector('.edot');if(dot)dot.className='edot u';}
+      }});
+      const btn=document.getElementById('btn-readtoggle');
+      if(btn)btn.textContent=newStatus?'📩 Mark Unread':'📨 Mark Read';
+    }
+  }catch(e){}
+}
+
 async function loadE(folder,btn){
   eLoaded=true;
-  document.querySelectorAll('.etb button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.etb button:not([style*="accent"])').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   const list=document.getElementById('elist');
   list.innerHTML='<div class="eld">Loading...</div>';
+  emailSearchTerm='';
+  const searchBox=document.getElementById('email-search');
+  if(searchBox)searchBox.value='';
   try{
-    const f=folder==='sentitems'?'sentitems':'inbox';
+    let f=folder;
+    if(currentMailAPI==='m365'){
+      if(folder==='sent'||folder==='sentitems')f='sentitems';
+      else if(folder==='trash'||folder==='deleteditems')f='deleteditems';
+      else if(folder==='drafts')f='drafts';
+      else if(folder==='archive')f='archive';
+      else f='inbox';
+    }else if(currentMailAPI==='gmail'){
+      if(folder==='sent'||folder==='sentitems')f='sent';
+      else if(folder==='trash')f='trash';
+      else if(folder==='drafts')f='drafts';
+      else f='inbox';
+    }else{
+      if(folder==='sent'||folder==='sentitems')f='sent';
+      else f='inbox';
+    }
     const apiBase=currentMailAPI==='gmail'?'/api/gmail':currentMailAPI==='yahoo'?'/api/yahoo':'/api/m365';
     const r=await fetch(apiBase+'/mail?folder='+f+'&top=50');
     const d=await r.json();
     if(d.error){list.innerHTML='<div class="eld">'+esc(String(d.error))+'</div>';return;}
-    const msgs=d.value||[];let ur=0,html='';
-    msgs.forEach(m=>{
-      const u=!m.isRead;if(u)ur++;
-      const fn=m.from?.emailAddress?.name||m.from?.emailAddress?.address||'unknown';
-      const subj=m.subject||'(no subject)';
-      const prev=m.bodyPreview||'';
-      const dt=new Date(m.receivedDateTime);
-      const ts=dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
-      const mid=encodeURIComponent(m.id||'');
-      html+=`<div class="ei${u?' unread':''}" onclick="readEmail('${mid}',this)" style="cursor:pointer;"><div class="edot ${u?'u':'r'}"></div><div style="min-width:0"><div class="ef">${esc(fn)}</div><div class="es">${esc(subj)}</div><div class="ep">${esc(prev.substring(0,120))}</div></div><div class="et">${ts}</div></div>`;
-    });
-    list.innerHTML=html||'<div class="eld">No emails.</div>';
-    document.getElementById('ecount').textContent=msgs.length+' messages'+(ur?' ('+ur+' unread)':'');
-    document.getElementById('sur').textContent=ur;
-    const b=document.getElementById('ebadge');if(ur>0){b.textContent=ur;b.style.display='inline';}else{b.style.display='none';}
-    const de=document.getElementById('demails');
-    const items=list.querySelectorAll('.ei');
-    let dhtml='';for(let i=0;i<Math.min(8,items.length);i++)dhtml+=items[i].outerHTML;
-    de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
-    updateFlagIndicators();
+    const msgs=d.value||[];
+    allEmailsCache=msgs;
+    renderEmailList(msgs);
   }catch(e){list.innerHTML='<div class="eld">Error loading emails.</div>';}
 }
 async function readEmail(mid,row){
@@ -1405,25 +1537,32 @@ async function sendCompose(){
   const subj=document.getElementById('ec-subj').value.trim();
   const body=document.getElementById('ec-body').value.trim();
   const fromAcct=document.getElementById('ec-from').value;
+  const cc=(document.getElementById('ec-cc')?.value||'').trim();
+  const bcc=(document.getElementById('ec-bcc')?.value||'').trim();
   if(!to){document.getElementById('ec-to').style.borderColor='var(--red)';return;}
   if(!body){document.getElementById('ec-body').style.borderColor='var(--red)';return;}
   const btn=document.getElementById('ec-send');
   btn.disabled=true;btn.textContent='Sending...';
   try{
     const toList=to.split(',').map(e=>e.trim()).filter(Boolean);
+    const ccList=cc?cc.split(',').map(e=>e.trim()).filter(Boolean):[];
+    const bccList=bcc?bcc.split(',').map(e=>e.trim()).filter(Boolean):[];
     let sendBase,viaNote='',payload;
 
     if(fromAcct==='dhatami'){
-      // Send via Resend as dhatami@edupolicy.ai
       sendBase='/api/resend-send';
-      payload={to:toList,subject:subj,content:body,from:'dhatami@edupolicy.ai',fromName:'Dr. David Hatami'};
+      payload={to:toList,cc:ccList,bcc:bccList,subject:subj,content:body,from:'dhatami@edupolicy.ai',fromName:'Dr. David Hatami'};
       viaNote=' (via dhatami@)';
     }else if(fromAcct==='gmail'){
       sendBase='/api/gmail';
-      payload={to:toList,subject:subj,content:body,contentType:'Text'};
+      payload={to:toList,cc:ccList,bcc:bccList,subject:subj,content:body,contentType:'Text'};
+    }else if(fromAcct==='yahoo'){
+      sendBase='/api/yahoo';
+      payload={to:toList,cc:ccList,bcc:bccList,subject:subj,content:body,contentType:'Text'};
+      viaNote=' (via Yahoo)';
     }else{
       sendBase='/api/m365';
-      payload={to:toList,subject:subj,content:body,contentType:'Text'};
+      payload={to:toList,cc:ccList,bcc:bccList,subject:subj,content:body,contentType:'Text'};
     }
 
     const endpoint=fromAcct==='dhatami'?sendBase:sendBase+'/mail/send';

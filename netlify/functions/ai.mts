@@ -263,7 +263,7 @@ export default async (req: Request, context: Context) => {
       }
 
       // Now synthesize with Claude Opus — the strongest brain adjudicates
-      const okResponses = responses.filter(r => r.status === "ok" && r.reply.length > 5);
+      const okResponses = responses.filter(r => r.status === "ok" && r.reply.length > 0);
 
       // If only one model responded successfully, just return that
       if (okResponses.length <= 1) {
