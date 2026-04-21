@@ -3010,14 +3010,28 @@ async function fetchMCEvents(){
       fetch('/api/gcal/events?start='+encodeURIComponent(s)+'&end='+encodeURIComponent(e))
     ]);
     mcEventDays=new Set();
+    // Collect fetched events so we can also seed calAllEvents for global search
+    const fetchedEvents=[];
     if(m365Res.status==='fulfilled'){
       const d=await m365Res.value.json();
-      (d.value||[]).forEach(ev=>{const dt=new Date((ev.start?.dateTime||'')+'Z');mcEventDays.add(dt.getDate());});
+      (d.value||[]).forEach(ev=>{
+        const dt=new Date((ev.start?.dateTime||'')+'Z');
+        if(dt.getFullYear()===mcY&&dt.getMonth()===mcM)mcEventDays.add(dt.getDate());
+        ev._src='M365';fetchedEvents.push(ev);
+      });
     }
     if(gcalRes.status==='fulfilled'){
       const d=await gcalRes.value.json();
-      (d.value||[]).forEach(ev=>{const raw=ev.start?.dateTime||'';const dt=(/[Z]|[+-]\d{2}:\d{2}$/.test(raw))?new Date(raw):new Date(raw+'Z');mcEventDays.add(dt.getDate());});
+      (d.value||[]).forEach(ev=>{
+        const raw=ev.start?.dateTime||'';
+        const dt=(/[Z]|[+-]\d{2}:\d{2}$/.test(raw))?new Date(raw):new Date(raw+'Z');
+        if(dt.getFullYear()===mcY&&dt.getMonth()===mcM)mcEventDays.add(dt.getDate());
+        ev._src='Google';fetchedEvents.push(ev);
+      });
     }
+    // Seed calAllEvents for global search when Calendar page hasn't been opened yet.
+    // If user later visits Calendar, loadCal() will fully replace calAllEvents with its broader range.
+    if(!calAllEvents||!calAllEvents.length)calAllEvents=fetchedEvents;
     renderMC();
   }catch(e){}
 }
