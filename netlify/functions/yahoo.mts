@@ -15,6 +15,45 @@ import { simpleParser } from "mailparser";
  *   YAHOO_APP_PASSWORD (Yahoo App Password — NOT your login password)
  */
 
+// Module-level cache — survives across invocations within the same warm Lambda instance.
+// Yahoo IMAP has high fixed latency per connection (~500-1000ms TLS + auth), so even
+// short TTLs dramatically improve perceived speed when the user refreshes or navigates
+// back to the email tab within a minute.
+type CacheEntry = { timestamp: number; data: any };
+const LIST_TTL_MS = 30000;   // 30s for list views
+const BODY_TTL_MS = 300000;  // 5min for single-message bodies (bodies never change)
+const listCache: Map<string, CacheEntry> = new Map();
+const bodyCache: Map<string, CacheEntry> = new Map();
+
+function getCached(cache: Map<string, CacheEntry>, key: string, ttl: number): any | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > ttl) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+function setCached(cache: Map<string, CacheEntry>, key: string, data: any): void {
+  cache.set(key, { timestamp: Date.now(), data });
+  // Prevent unbounded growth — cap at 100 entries per cache
+  if (cache.size > 100) {
+    const oldest = [...cache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
+    if (oldest) cache.delete(oldest[0]);
+  }
+}
+function invalidateListCache(): void {
+  listCache.clear();
+}
+
+function folderMap_static(folder: string): string {
+  const m: Record<string, string> = {
+    "inbox": "INBOX", "sent": "Sent", "sentitems": "Sent",
+    "drafts": "Draft", "trash": "Trash",
+  };
+  return m[folder] || "INBOX";
+}
+
 async function getImapClient(): Promise<ImapFlow> {
   const email = Netlify.env.get("YAHOO_EMAIL");
   const appPassword = Netlify.env.get("YAHOO_APP_PASSWORD");
@@ -74,6 +113,35 @@ export default async (req: Request, context: Context) => {
       const folder = url.searchParams.get("folder") || "inbox";
       const top = parseInt(url.searchParams.get("top") || "15");
       const isPrefetch = url.searchParams.get("prefetch") === "1";
+
+      // CACHE CHECK — short-circuit before opening IMAP connection (saves 500-1000ms TLS handshake + auth)
+      if (msgId) {
+        const cacheKey = `body:${msgId}`;
+        const cached = getCached(bodyCache, cacheKey, BODY_TTL_MS);
+        if (cached) {
+          // If not a prefetch, also fire a background mark-as-read since cache hit skipped server
+          if (!isPrefetch && !cached.isRead) {
+            // Don't await — fire-and-forget
+            (async () => {
+              try {
+                const c = await getImapClient();
+                const l = await c.getMailboxLock(folderMap_static(folder));
+                try { await c.messageFlagsAdd(String(msgId), ["\\Seen"], { uid: true }); } catch (e) {}
+                l.release();
+                await c.logout();
+              } catch (e) {}
+            })();
+            cached.isRead = true;
+          }
+          return new Response(JSON.stringify(cached), { headers: { ...headers, "X-Cache": "hit" } });
+        }
+      } else {
+        const cacheKey = `list:${folder}:${top}`;
+        const cached = getCached(listCache, cacheKey, LIST_TTL_MS);
+        if (cached) {
+          return new Response(JSON.stringify(cached), { headers: { ...headers, "X-Cache": "hit" } });
+        }
+      }
 
       client = await getImapClient();
 
@@ -152,7 +220,11 @@ export default async (req: Request, context: Context) => {
 
           lock.release();
           await client.logout();
-          return new Response(JSON.stringify(result), { headers });
+          // Write body to cache
+          setCached(bodyCache, `body:${String(uid)}`, result);
+          // If we marked as read, invalidate list cache (isRead count changed)
+          if (!isPrefetch) invalidateListCache();
+          return new Response(JSON.stringify(result), { headers: { ...headers, "X-Cache": "miss" } });
         }
 
         // List messages
@@ -199,7 +271,9 @@ export default async (req: Request, context: Context) => {
 
         lock.release();
         await client.logout();
-        return new Response(JSON.stringify({ value: messages }), { headers });
+        const listResult = { value: messages };
+        setCached(listCache, `list:${folder}:${top}`, listResult);
+        return new Response(JSON.stringify(listResult), { headers: { ...headers, "X-Cache": "miss" } });
       } catch (err) {
         lock.release();
         throw err;
@@ -208,6 +282,8 @@ export default async (req: Request, context: Context) => {
 
     // ── MARK READ/UNREAD (Yahoo) ──
     if (path === "/mail/read" && req.method === "PATCH") {
+      invalidateListCache();
+      bodyCache.clear(); // isRead state changed for this message
       const body = await req.json();
       const { id: msgId, isRead, folder } = body;
       if (!msgId) {
@@ -237,6 +313,8 @@ export default async (req: Request, context: Context) => {
 
     // ── DELETE / TRASH EMAIL ──
     if (path === "/mail" && req.method === "DELETE") {
+      invalidateListCache();
+      bodyCache.clear();
       const msgId = url.searchParams.get("id");
       const folder = url.searchParams.get("folder") || "inbox";
       if (!msgId)
@@ -298,6 +376,7 @@ export default async (req: Request, context: Context) => {
 
     // ── SEND EMAIL VIA SMTP ──
     if (path === "/mail/send" && req.method === "POST") {
+      invalidateListCache(); // Sent folder contents changed
       const { createTransport } = await import("nodemailer");
       const email = Netlify.env.get("YAHOO_EMAIL") || "";
       const appPassword = Netlify.env.get("YAHOO_APP_PASSWORD") || "";
