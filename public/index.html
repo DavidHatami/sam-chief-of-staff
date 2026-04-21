@@ -3714,18 +3714,19 @@ function renderZoomMeetings(){
     else{buckets.later.push(m);}
   });
   const sections=[
-    {key:'live',label:'● Happening Now',color:'var(--green)',glow:true},
-    {key:'soon',label:'Starting Within the Hour',color:'var(--amber)',glow:true},
-    {key:'today',label:'Later Today',color:'var(--accent)',glow:false},
-    {key:'tomorrow',label:'Tomorrow',color:'var(--text)',glow:false},
-    {key:'week',label:'This Week',color:'var(--text-dim)',glow:false},
-    {key:'later',label:'Later',color:'var(--text-muted)',glow:false},
+    {key:'live',label:'● Happening Now',color:'var(--green)',glowBg:'rgba(52,211,153,0.10)'},
+    {key:'soon',label:'Starting Within the Hour',color:'var(--amber)',glowBg:'rgba(251,191,36,0.10)'},
+    {key:'today',label:'Later Today',color:'var(--accent)',glowBg:null},
+    {key:'tomorrow',label:'Tomorrow',color:'var(--text)',glowBg:null},
+    {key:'week',label:'This Week',color:'var(--text-dim)',glowBg:null},
+    {key:'later',label:'Later',color:'var(--text-muted)',glowBg:null},
   ];
   let html='';
   sections.forEach(sec=>{
     const items=buckets[sec.key];
     if(!items.length)return;
-    html+=`<div style="padding:10px 16px;background:${sec.glow?sec.color.replace('var(--','rgba('+(sec.key==='live'?'52,211,153':'251,191,36')+',0.08)').replace(')','').replace('var(--','').replace(')',''):'var(--surface-2)'};border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:${sec.color};text-transform:uppercase;letter-spacing:0.7px;">
+    const bgColor=sec.glowBg||'var(--surface-2)';
+    html+=`<div style="padding:10px 16px;background:${bgColor};border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:${sec.color};text-transform:uppercase;letter-spacing:0.7px;">
       ${sec.label} <span style="font-family:var(--mono);font-weight:500;opacity:0.7;">(${items.length})</span>
     </div>`;
     items.forEach(m=>{
