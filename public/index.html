@@ -779,11 +779,16 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
       <option value="alpha">A → Z</option>
     </select>
     <input id="task-search" type="text" placeholder="Search tasks..." oninput="filterTasksBySearch(this.value)" style="padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;width:160px;">
+    <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:3px;margin-left:4px;">
+      <button id="tk-view-list" onclick="setTaskView('list')" style="padding:5px 10px;border-radius:5px;background:var(--accent-glow);border:none;color:var(--accent);font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">List</button>
+      <button id="tk-view-kanban" onclick="setTaskView('kanban')" style="padding:5px 10px;border-radius:5px;background:transparent;border:none;color:var(--text-dim);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">Kanban</button>
+    </div>
   </div>
   <!-- Cancelled Bucket Summary -->
   <div class="card" style="padding:0;overflow:hidden;">
     <div id="tlist" style="max-height:calc(100vh - 240px);overflow-y:auto;"><div class="eld">Loading tasks...</div></div>
   </div>
+  <div id="tkanban" style="display:none;max-height:calc(100vh - 240px);overflow-x:auto;overflow-y:hidden;"></div>
   <div id="task-vdrag" style="height:6px;cursor:row-resize;background:var(--border);flex-shrink:0;position:relative;z-index:10;transition:background 0.15s;border-radius:3px;margin:2px 0;" onmousedown="startTaskDrag(event)"><div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:2px;background:var(--text-muted);border-radius:1px;opacity:0.5;"></div></div>
   <!-- Add/Edit Task Modal -->
   <div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;will-change:display;-webkit-transform:translateZ(0);transform:translateZ(0);">
@@ -3667,11 +3672,80 @@ async function loadTasks(){
     const r=await fetch('/api/tasks/');
     const d=await r.json();
     allTasks=d.tasks||[];
-    renderTasks();
+    if(taskView==='kanban')renderKanban();
+    else renderTasks();
     updateDashboardTasks();
   }catch(e){
     document.getElementById('tlist').innerHTML='<div class="eld">Error loading tasks. API may be initializing — try refreshing.</div>';
   }
+}
+
+let taskView='list';
+function setTaskView(v){
+  taskView=v;
+  ['list','kanban'].forEach(function(x){
+    const b=document.getElementById('tk-view-'+x);
+    if(!b)return;
+    if(x===v){b.style.background='var(--accent-glow)';b.style.color='var(--accent)';b.style.fontWeight='600';}
+    else{b.style.background='transparent';b.style.color='var(--text-dim)';b.style.fontWeight='500';}
+  });
+  // Toggle containers (tlist is inside a .card, so toggle the card wrapper)
+  const tlist=document.getElementById('tlist');
+  const tlistCard=tlist?tlist.parentElement:null;
+  const tkanban=document.getElementById('tkanban');
+  if(tlistCard)tlistCard.style.display=v==='list'?'block':'none';
+  if(tkanban)tkanban.style.display=v==='kanban'?'block':'none';
+  if(v==='kanban')renderKanban();
+  else renderTasks();
+}
+function renderKanban(){
+  const el=document.getElementById('tkanban');
+  if(!el)return;
+  let tasks=[...allTasks];
+  // Apply search (kanban respects search + sort, but ignores status filter — user sees all status columns)
+  if(taskSearchTerm){
+    tasks=tasks.filter(t=>{
+      const haystack=((t.title||'')+(t.description||'')+(t.category||'')+(t.notes||'')).toLowerCase();
+      return haystack.includes(taskSearchTerm);
+    });
+  }
+  const columns=[
+    {key:'todo',label:'To Do',color:'var(--text-dim)'},
+    {key:'in-progress',label:'In Progress',color:'var(--amber)'},
+    {key:'review',label:'Review',color:'#a855f7'},
+    {key:'done',label:'Done',color:'var(--green)'},
+    {key:'canceled',label:'Canceled',color:'var(--red)'},
+  ];
+  const priColor={urgent:'var(--red)',high:'var(--amber)',normal:'var(--accent)',low:'var(--text-muted)'};
+  let html='<div style="display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:10px;height:100%;">';
+  columns.forEach(function(col){
+    const colTasks=tasks.filter(t=>t.status===col.key);
+    html+=`<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:7px;padding:10px;display:flex;flex-direction:column;max-height:calc(100vh - 260px);">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;border-bottom:2px solid ${col.color};margin-bottom:8px;">
+        <div style="font-size:11px;font-weight:700;color:${col.color};text-transform:uppercase;letter-spacing:0.5px;">${col.label}</div>
+        <div style="font-size:11px;font-family:var(--mono);color:var(--text-muted);background:var(--surface);padding:2px 7px;border-radius:10px;">${colTasks.length}</div>
+      </div>
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">`;
+    if(!colTasks.length){html+='<div style="font-size:11px;color:var(--text-muted);font-style:italic;padding:4px;">—</div>';}
+    colTasks.forEach(function(t){
+      const pc=priColor[t.priority]||'var(--accent)';
+      const due=t.dueDate?new Date(t.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+      const subCount=(t.subtasks||[]).length;
+      const subDone=(t.subtasks||[]).filter(s=>s.done).length;
+      html+=`<div onclick="editTask('${t.id}')" style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${pc};border-radius:5px;padding:8px 10px;cursor:pointer;transition:all 0.12s;" onmouseover="this.style.borderColor='var(--accent)';this.style.borderLeftColor='${pc}'" onmouseout="this.style.borderColor='var(--border)';this.style.borderLeftColor='${pc}'">
+        <div style="font-size:12px;font-weight:500;line-height:1.3;margin-bottom:4px;">${esc(t.title||'(untitled)')}</div>
+        <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);font-family:var(--mono);flex-wrap:wrap;">
+          ${t.category?`<span>${esc(t.category)}</span>`:''}
+          ${due?`<span>📅 ${due}</span>`:''}
+          ${subCount?`<span>☑ ${subDone}/${subCount}</span>`:''}
+          <span style="color:${pc};font-weight:600;">${(t.priority||'normal').toUpperCase()}</span>
+        </div>
+      </div>`;
+    });
+    html+='</div></div>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
 }
 
 function renderTasks(){
