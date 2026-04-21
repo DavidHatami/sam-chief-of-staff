@@ -177,17 +177,28 @@ ${textToCompress}
 Compressed version (aim for 40-60% reduction):`;
 
       try {
-        const gResp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: compressPrompt }] }],
-              generationConfig: { maxOutputTokens: 1024, temperature: 0.2 },
-            }),
-          }
-        );
+        // 15s ceiling on single compress — leaves 11s slack under Netlify's 26s budget.
+        // Bulk compress-all uses 8s per call already; this single path previously had no timeout
+        // and could hang until Netlify killed the whole function with a 502.
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), 15000);
+        let gResp: Response;
+        try {
+          gResp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: compressPrompt }] }],
+                generationConfig: { maxOutputTokens: 1024, temperature: 0.2 },
+              }),
+              signal: abort.signal,
+            }
+          );
+        } finally {
+          clearTimeout(timer);
+        }
 
         if (!gResp.ok) {
           const errText = await gResp.text();

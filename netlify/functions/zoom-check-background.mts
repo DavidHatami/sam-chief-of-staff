@@ -304,8 +304,15 @@ export default async (req: Request) => {
         taskCount++;
       }
 
-      // Mark as processed
+      // Mark as processed — save IMMEDIATELY so a mid-loop crash doesn't re-process this
+      // recording on the next 15-min tick (which would create duplicate tasks). Previously
+      // processed-list was saved only at the end, so any partial progress was lost.
       processedIds.push(String(rec.id));
+      try {
+        await store.setJSON("processed-list", processedIds);
+      } catch (e) {
+        console.log(`[ZOOM-AUTO] Failed to checkpoint processed-list after ${rec.id}:`, String(e));
+      }
       console.log(
         `[ZOOM-AUTO] Created ${(parsed.action_items?.length || 0) + (parsed.follow_ups?.length || 0)} review tasks from ${rec.topic}`
       );
@@ -314,7 +321,7 @@ export default async (req: Request) => {
     }
   }
 
-  // 5. Save updated processed list
+  // 5. Final checkpoint (redundant if loop completed cleanly, but catches the early-short-transcript path)
   await store.setJSON("processed-list", processedIds);
   console.log(
     `[ZOOM-AUTO] Done. Processed ${unprocessed.length} recordings. Total processed: ${processedIds.length}`
