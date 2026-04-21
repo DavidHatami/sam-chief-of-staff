@@ -44,7 +44,7 @@ export default async (req: Request) => {
   };
 
   const storeConfigs = [
-    { name: "sam-tasks", keys: ["tasks"] },
+    { name: "sam-tasks", keys: [], listAll: true },
     { name: "sam-instructions", keys: ["all"] },
     { name: "sam-projects", keys: ["index"] },
     { name: "email-flags", keys: ["flags"] },
@@ -56,9 +56,18 @@ export default async (req: Request) => {
       const store = getStore({ name: cfg.name, consistency: "strong" });
       const storeData: Record<string, any> = {};
 
-      for (const key of cfg.keys) {
-        const data = await store.get(key, { type: "json" });
-        storeData[key] = data;
+      // Stores with listAll=true have keys-by-ID (like tasks) — enumerate then fetch in parallel
+      if ((cfg as any).listAll) {
+        const listResult = await store.list();
+        const allKeys = listResult.blobs.map((b: any) => b.key);
+        const values = await Promise.all(allKeys.map((k: string) => store.get(k, { type: "json" }).catch(() => null)));
+        allKeys.forEach((k: string, i: number) => { if (values[i] !== null) storeData[k] = values[i]; });
+        storeData._keyCount = allKeys.length;
+      } else {
+        for (const key of cfg.keys) {
+          const data = await store.get(key, { type: "json" });
+          storeData[key] = data;
+        }
       }
 
       // For sam-projects, also fetch individual project blobs
@@ -86,6 +95,14 @@ export default async (req: Request) => {
       backup._meta.stores.push({ name: cfg.name, status: "error", error: String(e) });
       console.log(`[BACKUP] Error reading ${cfg.name}: ${e}`);
     }
+  }
+
+  // SAFETY RAIL — refuse to push if zero stores succeeded. Prevents an empty
+  // backup from overwriting the last good one (though git history still keeps it).
+  const okStoreCount = backup._meta.stores.filter((s: any) => s.status === "ok").length;
+  if (okStoreCount === 0) {
+    console.log(`[BACKUP] ABORT — every store failed to read. Not overwriting last good backup.`);
+    return;
   }
 
   const backupJson = JSON.stringify(backup, null, 2);

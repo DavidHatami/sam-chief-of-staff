@@ -50,7 +50,7 @@ export default async (req: Request, context: Context) => {
   };
 
   const storeConfigs = [
-    { name: "sam-tasks", keys: ["tasks"] },
+    { name: "sam-tasks", keys: [], listAll: true },
     { name: "sam-instructions", keys: ["all"] },
     { name: "sam-projects", keys: ["index"] },
     { name: "email-flags", keys: ["flags"] },
@@ -61,9 +61,17 @@ export default async (req: Request, context: Context) => {
     try {
       const store = getStore({ name: cfg.name, consistency: "strong" });
       const storeData: Record<string, any> = {};
-      for (const key of cfg.keys) {
-        const data = await store.get(key, { type: "json" });
-        storeData[key] = data;
+      if ((cfg as any).listAll) {
+        const listResult = await store.list();
+        const allKeys = listResult.blobs.map((b: any) => b.key);
+        const values = await Promise.all(allKeys.map((k: string) => store.get(k, { type: "json" }).catch(() => null)));
+        allKeys.forEach((k: string, i: number) => { if (values[i] !== null) storeData[k] = values[i]; });
+        storeData._keyCount = allKeys.length;
+      } else {
+        for (const key of cfg.keys) {
+          const data = await store.get(key, { type: "json" });
+          storeData[key] = data;
+        }
       }
       if (cfg.name === "sam-projects" && storeData.index && Array.isArray(storeData.index)) {
         const projects: Record<string, any> = {};
@@ -81,6 +89,12 @@ export default async (req: Request, context: Context) => {
       backup[cfg.name] = { error: String(e) };
       backup._meta.stores.push({ name: cfg.name, status: "error", error: String(e) });
     }
+  }
+
+  // SAFETY RAIL — refuse to push if zero stores succeeded
+  const okStoreCount = backup._meta.stores.filter((s: any) => s.status === "ok").length;
+  if (okStoreCount === 0) {
+    return new Response(JSON.stringify({ error: "Every store failed to read. Not overwriting last good backup.", results: backup._meta.stores }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
 
   const backupJson = JSON.stringify(backup, null, 2);
