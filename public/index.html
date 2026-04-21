@@ -248,6 +248,10 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 <body>
 <div class="sidebar" id="main-sidebar">
   <div class="sb-brand"><div class="icon">S</div><div><div class="bt">Secret Agent Man</div><div class="bs">Chief of Staff</div></div></div>
+  <div style="padding:10px 10px 6px;position:relative;">
+    <input id="global-search" type="text" placeholder="🔍 Search everything..." oninput="onGlobalSearch(this.value)" onfocus="if(this.value.trim())document.getElementById('gs-results').style.display='block'" onkeydown="if(event.key==='Escape'){this.value='';document.getElementById('gs-results').style.display='none';}" style="width:100%;padding:7px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;transition:border-color 0.15s;" onblur="setTimeout(()=>{document.getElementById('gs-results').style.display='none';},180);">
+    <div id="gs-results" style="display:none;position:absolute;top:calc(100% + 2px);left:10px;right:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:7px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-height:70vh;overflow-y:auto;z-index:500;"></div>
+  </div>
   <div class="sb-nav">
     <div class="ns">Command Center</div>
     <div class="ni active" onclick="go('dash',this)"><span class="nic">📊</span><span>Dashboard</span></div>
@@ -969,6 +973,167 @@ function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.
 function tick(){const n=new Date(),h=n.getHours(),g=h<12?'Morning':h<17?'Afternoon':'Evening';document.getElementById('greeting').textContent='Good '+g+', Dr. Hatami';document.getElementById('clock').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/New_York'});document.getElementById('datestr').textContent=n.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});}
 setInterval(tick,1000);tick();
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// ── GLOBAL SEARCH ──
+let gsTimer=null;
+function onGlobalSearch(v){
+  clearTimeout(gsTimer);
+  const val=(v||'').trim();
+  const box=document.getElementById('gs-results');
+  if(!box)return;
+  if(!val||val.length<2){box.style.display='none';box.innerHTML='';return;}
+  gsTimer=setTimeout(()=>doGlobalSearch(val),180);
+}
+async function doGlobalSearch(q){
+  const box=document.getElementById('gs-results');
+  if(!box)return;
+  const ql=q.toLowerCase();
+  const results=[];
+  // 1. Emails — use the already-cached per-account lists
+  try{
+    if(typeof emailAccountCache==='object'&&emailAccountCache){
+      Object.keys(emailAccountCache).forEach(function(acct){
+        const arr=emailAccountCache[acct]||[];
+        arr.forEach(function(m){
+          const subj=(m.subject||'').toLowerCase();
+          const from=((m.from?.emailAddress?.name||'')+' '+(m.from?.emailAddress?.address||'')).toLowerCase();
+          const prev=(m.bodyPreview||'').toLowerCase();
+          if(subj.includes(ql)||from.includes(ql)||prev.includes(ql)){
+            results.push({
+              type:'email',icon:'📧',color:'var(--accent)',
+              title:m.subject||'(no subject)',
+              sub:(m.from?.emailAddress?.name||m.from?.emailAddress?.address||'')+' · '+acct,
+              action:function(){openEventEmail(acct,m.id);}
+            });
+          }
+        });
+      });
+    }
+  }catch(e){}
+  // 2. Calendar events — from calAllEvents shared store
+  try{
+    if(Array.isArray(calAllEvents)){
+      calAllEvents.forEach(function(e){
+        const title=(e.subject||'').toLowerCase();
+        const locRaw=(typeof e.location==='string'?e.location:(e.location?.displayName||''))||'';
+        const loc=locRaw.toLowerCase();
+        if(title.includes(ql)||loc.includes(ql)){
+          const raw=e.start?.dateTime||'';
+          const hasTZ=/[Z]|[+-]\d{2}:\d{2}$/.test(raw);
+          const d=hasTZ?new Date(raw):new Date(raw+'Z');
+          const ds=d.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+          results.push({
+            type:'calendar',icon:'📅',color:e._src==='Google'?'var(--green)':'var(--accent)',
+            title:e.subject||'(no title)',
+            sub:ds+' · '+(e._src||'Calendar'),
+            action:function(){go('calendar',document.querySelectorAll('.ni')[2]);}
+          });
+        }
+      });
+    }
+  }catch(e){}
+  // 3. Tasks — from allTasks
+  try{
+    if(Array.isArray(allTasks)){
+      allTasks.forEach(function(t){
+        const hay=((t.title||'')+' '+(t.description||'')+' '+(t.category||'')+' '+(t.notes||'')).toLowerCase();
+        if(hay.includes(ql)){
+          results.push({
+            type:'task',icon:'✅',color:t.priority==='urgent'?'var(--red)':t.priority==='high'?'var(--amber)':'var(--accent)',
+            title:t.title||'(untitled)',
+            sub:(t.status||'todo').toUpperCase()+(t.category?' · '+t.category:'')+(t.dueDate?' · due '+t.dueDate:''),
+            action:function(){go('tasks',document.querySelectorAll('.ni')[3]);setTimeout(()=>editTask(t.id),200);}
+          });
+        }
+      });
+    }
+  }catch(e){}
+  // 4. Projects — from loaded project index
+  try{
+    if(Array.isArray(window._allProjects)){
+      window._allProjects.forEach(function(p){
+        const hay=((p.name||'')+' '+(p.description||'')+' '+(p.category||'')+' '+((p.tags||[]).join(' '))).toLowerCase();
+        if(hay.includes(ql)){
+          results.push({
+            type:'project',icon:'📁',color:'#7c3aed',
+            title:p.name||'(untitled)',
+            sub:(p.status||'active').toUpperCase()+(p.category?' · '+p.category:''),
+            action:function(){go('projects',document.querySelectorAll('.ni')[6]);setTimeout(()=>{if(typeof openProject==='function')openProject(p.id);},200);}
+          });
+        }
+      });
+    }
+  }catch(e){}
+  // 5. Transcripts — from loaded processed transcripts
+  try{
+    if(Array.isArray(window._zoomTranscripts)){
+      window._zoomTranscripts.forEach(function(t){
+        const hay=((t.topic||'')+' '+(t.summary||'')+' '+(t.transcript_text||'').substring(0,2000)).toLowerCase();
+        if(hay.includes(ql)){
+          results.push({
+            type:'transcript',icon:'🎥',color:'#7c3aed',
+            title:t.topic||'Zoom Transcript',
+            sub:'Transcript · '+(t.start_time?new Date(t.start_time).toLocaleDateString():'')+' · '+(t.word_count||0)+' words',
+            action:function(){go('zoom',document.querySelectorAll('.ni')[4]);}
+          });
+        }
+      });
+    }
+  }catch(e){}
+  // Sort by relevance (title match first)
+  results.sort(function(a,b){
+    const aHit=a.title.toLowerCase().indexOf(ql);
+    const bHit=b.title.toLowerCase().indexOf(ql);
+    if(aHit>=0&&bHit<0)return -1;
+    if(bHit>=0&&aHit<0)return 1;
+    return 0;
+  });
+  // Render
+  if(!results.length){
+    box.innerHTML='<div style="padding:14px;font-size:12px;color:var(--text-muted);text-align:center;">No matches for "'+esc(q)+'".</div>';
+    box.style.display='block';
+    return;
+  }
+  const grouped={};
+  results.forEach(function(r){if(!grouped[r.type])grouped[r.type]=[];grouped[r.type].push(r);});
+  const labelMap={email:'Email',calendar:'Calendar',task:'Tasks',project:'Projects',transcript:'Transcripts'};
+  const order=['email','calendar','task','project','transcript'];
+  let html='';
+  order.forEach(function(type){
+    const arr=grouped[type];if(!arr||!arr.length)return;
+    html+=`<div style="padding:8px 12px 4px;font-size:9px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);font-weight:600;font-family:var(--mono);">${labelMap[type]} · ${arr.length}</div>`;
+    arr.slice(0,8).forEach(function(r,idx){
+      const iid='gs-item-'+type+'-'+idx;
+      html+=`<div id="${iid}" style="padding:8px 12px;cursor:pointer;border-left:3px solid ${r.color};transition:background 0.1s;" onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background=''">
+        <div style="display:flex;gap:8px;align-items:start;">
+          <div style="font-size:14px;flex-shrink:0;">${r.icon}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.title.substring(0,60))}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.sub)}</div>
+          </div>
+        </div>
+      </div>`;
+    });
+  });
+  html+=`<div style="padding:6px 12px;font-size:9px;color:var(--text-muted);font-style:italic;border-top:1px solid var(--border);">${results.length} result${results.length===1?'':'s'} · showing cached data only</div>`;
+  box.innerHTML=html;
+  box.style.display='block';
+  // Wire click handlers after DOM insert
+  Object.keys(grouped).forEach(function(type){
+    grouped[type].slice(0,8).forEach(function(r,idx){
+      const iid='gs-item-'+type+'-'+idx;
+      const node=document.getElementById(iid);
+      if(node){
+        node.addEventListener('mousedown',function(ev){
+          ev.preventDefault();
+          box.style.display='none';
+          document.getElementById('global-search').value='';
+          try{r.action();}catch(e){}
+        });
+      }
+    });
+  });
+}
 
 // ── SAM BACKUP ──
 async function runBackupNow(){
@@ -2747,6 +2912,7 @@ async function loadProjects(){
   try{
     const r=await fetch('/api/projects');const d=await r.json();
     allProjects=d.projects||[];
+    window._allProjects=allProjects;
     renderProjects();
     const badge=document.getElementById('pbadge');
     const active=allProjects.filter(p=>p.status==='active').length;
@@ -3520,9 +3686,12 @@ async function processTranscript(meetingId,topic){
     processedTranscripts.unshift({
       meetingId,topic,date:d.start_time||'',
       wordCount:d.word_count||0,
+      transcript_text:d.transcript_text||'',
+      start_time:d.start_time||'',
       ...parsed,
       processedAt:new Date().toISOString()
     });
+    window._zoomTranscripts=processedTranscripts;
     renderProcessedTranscripts();
 
     btn.textContent='Done ✓';btn.style.background='var(--green-dim)';btn.style.color='var(--green)';
