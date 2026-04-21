@@ -1381,11 +1381,42 @@ function renderEmailList(msgs){
   document.getElementById('sur').textContent=ur;
   const b=document.getElementById('ebadge');if(ur>0){b.textContent=ur;b.style.display='inline';}else{b.style.display='none';}
   const de=document.getElementById('demails');
-  if(de){const items=list.querySelectorAll('.ei');let dhtml='';for(let i=0;i<Math.min(8,items.length);i++)dhtml+=items[i].outerHTML;de.innerHTML=dhtml||'<div class="eld">No emails.</div>';}
+  if(de){
+    const acct=getAccountById(currentMailAPI);
+    const acctIcon=acct?.icon||'📧';
+    const acctLabel=acct?.label||'';
+    const items=list.querySelectorAll('.ei');
+    let dhtml='';
+    for(let i=0;i<Math.min(8,items.length);i++){
+      // Add account badge and make clickable to navigate to email
+      const clone=items[i].outerHTML;
+      // Wrap with account badge and navigation
+      const badgeHtml=`<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-muted);font-family:var(--mono);padding:2px 10px 0;margin-top:-2px;">${acctIcon} ${acctLabel}</div>`;
+      dhtml+=`<div onclick="go('email',document.querySelectorAll('.ni')[1]);setTimeout(()=>{const rows=document.querySelectorAll('.ei');if(rows[${i}])rows[${i}].click();},200);" style="cursor:pointer;">${clone}${i===0?badgeHtml:''}</div>`;
+    }
+    de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
+  }
   updateFlagIndicators();
   // Auto-load the first email immediately — no waiting for click
   const firstRow=list.querySelector('.ei');
   if(firstRow)setTimeout(()=>firstRow.click(),80);
+  // Prefetch next 2-3 email bodies in background for instant click
+  setTimeout(()=>{
+    const acct=getAccountById(currentMailAPI);
+    if(!acct?.apiBase)return;
+    const rows=list.querySelectorAll('.ei');
+    for(let i=1;i<Math.min(4,rows.length);i++){
+      const onclick=rows[i].getAttribute('onclick')||'';
+      const midMatch=onclick.match(/readEmail\('([^']+)'/);
+      if(midMatch){
+        const mid=midMatch[1];
+        const ck=currentMailAPI+':'+mid;
+        if(!emailBodyCache.has(ck)){
+          fetch(acct.apiBase+'/mail?id='+mid).then(r=>r.json()).then(d=>{if(!d.error)emailBodyCache.set(ck,d);}).catch(()=>{});
+        }
+      }
+    }
+  },500);
 }
 
 function sortEmails(val){
@@ -1517,55 +1548,69 @@ async function fetchEmailsFromAPI(folder){
     return d.value||[];
   }catch(e){document.getElementById('elist').innerHTML='<div class="eld">Error loading emails.</div>';return null;}
 }
+// Email body cache — read once, instant forever
+const emailBodyCache=new Map();
+
+function renderEmailBody(d){
+  document.getElementById('er-subject').textContent=d.subject||'(no subject)';
+  const fromName=d.from?.emailAddress?.name||'';
+  const fromAddr=d.from?.emailAddress?.address||'';
+  document.getElementById('er-from').textContent=fromName+(fromAddr?' <'+fromAddr+'>':'');
+  const dt=new Date(d.receivedDateTime);
+  document.getElementById('er-date').textContent=dt.toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+  const toList=(d.toRecipients||[]).map(t=>t.emailAddress?.address||'').join(', ');
+  document.getElementById('er-to').textContent=toList?'To: '+toList:'';
+  const body=d.body||{};
+  const bodyEl=document.getElementById('er-body');
+  if(body.contentType==='html'){
+    const iframe=document.createElement('iframe');
+    iframe.style.cssText='width:100%;border:none;min-height:200px;border-radius:6px;background:transparent;contain:layout style;';
+    iframe.sandbox='allow-same-origin';
+    bodyEl.innerHTML='';bodyEl.appendChild(iframe);
+    const darkCSS='html,body{background:#1a1d26!important;color:#c8cad0!important;font-family:-apple-system,BlinkMacSystemFont,sans-serif!important;font-size:14px!important;line-height:1.65!important;margin:12px!important;padding:0!important;word-wrap:break-word;overflow-wrap:break-word;}a{color:#6b9fff!important;}img{max-width:100%!important;height:auto!important;}table{max-width:100%!important;border-collapse:collapse;}td,th{padding:4px 8px;}pre,code{background:#12141a!important;color:#c8cad0!important;padding:4px 6px;border-radius:4px;font-size:13px;overflow-x:auto;max-width:100%;}blockquote{border-left:3px solid #2a2e3a;padding-left:12px;margin-left:0;color:#8b8fa3;}hr{border:none;border-top:1px solid #2a2e3a;}';
+    iframe.onload=function(){try{iframe.style.height=Math.min(2000,Math.max(200,iframe.contentDocument.body.scrollHeight+30))+'px';}catch(e){}};
+    setTimeout(()=>{try{iframe.contentDocument.open();iframe.contentDocument.write('<!DOCTYPE html><html><head><style>'+darkCSS+'</style></head><body>'+body.content+'</body></html>');iframe.contentDocument.close();}catch(e){bodyEl.textContent=d.bodyPreview||'';}},30);
+  }else{
+    bodyEl.style.whiteSpace='pre-wrap';
+    bodyEl.textContent=body.content||d.bodyPreview||'';
+  }
+  const empty=document.getElementById('ereader-empty');
+  const content=document.getElementById('ereader-content');
+  if(empty)empty.style.display='none';
+  if(content)content.style.display='block';
+  currentEmail=d;
+  closeCompose();
+  updateFlagButton();
+}
+
 async function readEmail(mid,row){
   if(!mid)return;
   const empty=document.getElementById('ereader-empty');
   const content=document.getElementById('ereader-content');
   if(!empty||!content)return;
-  const acct=getAccountById(currentMailAPI);
-  const isImap=acct?.type==='yahoo';
-  empty.textContent=isImap?'Loading via IMAP (may take a few seconds)...':'Loading...';
-  empty.style.display='block';content.style.display='none';
   document.querySelectorAll('.ei').forEach(r=>{r.style.background='';r.style.borderLeft='';});
   if(row){row.style.background='var(--surface-2)';row.style.borderLeft='3px solid var(--accent)';}
+
+  // Check body cache first — instant render, zero network
+  const cacheKey=currentMailAPI+':'+mid;
+  if(emailBodyCache.has(cacheKey)){
+    renderEmailBody(emailBodyCache.get(cacheKey));
+    if(row){row.classList.remove('unread');const dot=row.querySelector('.edot');if(dot)dot.className='edot r';}
+    return;
+  }
+
+  empty.textContent='Loading...';empty.style.display='block';content.style.display='none';
   try{
     const apiBase=getAccountApiBase(currentMailAPI);
-    const controller=new AbortController();
-    const timeoutId=setTimeout(()=>controller.abort(),20000); // 20s client-side timeout
-    const r=await fetch(apiBase+'/mail?id='+mid,{signal:controller.signal});
-    clearTimeout(timeoutId);
+    const r=await fetch(apiBase+'/mail?id='+mid);
     const d=await r.json();
     if(d.error){empty.textContent='Error: '+d.error;return;}
-    document.getElementById('er-subject').textContent=d.subject||'(no subject)';
-    const fromName=d.from?.emailAddress?.name||'';
-    const fromAddr=d.from?.emailAddress?.address||'';
-    document.getElementById('er-from').textContent=fromName+(fromAddr?' <'+fromAddr+'>':'');
-    const dt=new Date(d.receivedDateTime);
-    document.getElementById('er-date').textContent=dt.toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
-    const toList=(d.toRecipients||[]).map(t=>t.emailAddress?.address||'').join(', ');
-    document.getElementById('er-to').textContent=toList?'To: '+toList:'';
-    const body=d.body||{};
-    const bodyEl=document.getElementById('er-body');
-    if(body.contentType==='html'){
-      const iframe=document.createElement('iframe');
-      iframe.style.cssText='width:100%;border:none;min-height:200px;border-radius:6px;background:transparent;contain:layout style;';
-      iframe.sandbox='allow-same-origin';
-      bodyEl.innerHTML='';bodyEl.appendChild(iframe);
-      const darkCSS='html,body{background:#1a1d26!important;color:#c8cad0!important;font-family:-apple-system,BlinkMacSystemFont,sans-serif!important;font-size:14px!important;line-height:1.65!important;margin:12px!important;padding:0!important;word-wrap:break-word;overflow-wrap:break-word;}a{color:#6b9fff!important;}img{max-width:100%!important;height:auto!important;}table{max-width:100%!important;border-collapse:collapse;}td,th{padding:4px 8px;}pre,code{background:#12141a!important;color:#c8cad0!important;padding:4px 6px;border-radius:4px;font-size:13px;overflow-x:auto;max-width:100%;}blockquote{border-left:3px solid #2a2e3a;padding-left:12px;margin-left:0;color:#8b8fa3;}hr{border:none;border-top:1px solid #2a2e3a;}';
-      iframe.onload=function(){try{iframe.style.height=Math.min(2000,Math.max(200,iframe.contentDocument.body.scrollHeight+30))+'px';}catch(e){}};
-      setTimeout(()=>{try{iframe.contentDocument.open();iframe.contentDocument.write('<!DOCTYPE html><html><head><style>'+darkCSS+'</style></head><body>'+body.content+'</body></html>');iframe.contentDocument.close();}catch(e){bodyEl.textContent=d.bodyPreview||'';}},50);
-    }else{
-      bodyEl.style.whiteSpace='pre-wrap';
-      bodyEl.textContent=body.content||d.bodyPreview||'';
-    }
-    empty.style.display='none';content.style.display='block';
-    currentEmail=d;
-    closeCompose();
-    updateFlagButton();
+    // Cache the body for instant re-reads
+    emailBodyCache.set(cacheKey,d);
+    renderEmailBody(d);
     if(row){row.classList.remove('unread');const dot=row.querySelector('.edot');if(dot)dot.className='edot r';}
   }catch(e){
-    if(e.name==='AbortError'){empty.textContent='Request timed out. Yahoo IMAP connections can be slow — try again.';}
-    else{empty.textContent='Error loading email: '+(e.message||'Unknown error');}
+    empty.textContent='Error: '+(e.message||'Unknown error');
   }
 }
 let currentEmail=null;
