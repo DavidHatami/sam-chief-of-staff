@@ -543,8 +543,14 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
     <div id="zd-brief" style="display:none;margin-top:12px;padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);"></div>
   </div>
   <!-- Content sections -->
-  <div id="zoom-meetings" class="card" style="padding:0;overflow:hidden;">
-    <div id="zlist" style="max-height:calc(100vh - 340px);overflow-y:auto;"><div class="eld">Loading Zoom meetings...</div></div>
+  <div id="zoom-meetings" style="padding:0;">
+    <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+      <input id="zoom-search" type="text" placeholder="🔍 Search meetings by topic or ID..." oninput="filterZoomMeetings(this.value)" style="flex:1;padding:7px 12px;border-radius:7px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;">
+      <div id="zoom-count" style="font-size:11px;color:var(--text-muted);font-family:var(--mono);white-space:nowrap;"></div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div id="zlist" style="max-height:calc(100vh - 340px);overflow-y:auto;"><div class="eld">Loading Zoom meetings...</div></div>
+    </div>
   </div>
   <div id="zoom-past" class="card" style="padding:0;overflow:hidden;display:none;">
     <div id="zpast-list" style="max-height:calc(100vh - 340px);overflow-y:auto;"><div class="eld">Loading past meetings...</div></div>
@@ -1615,6 +1621,41 @@ const EMAIL_ACCOUNTS=[
   // {id:'gmail-2', label:'other@gmail.com',    type:'gmail', icon:'📩', apiBase:'/api/gmail',  sendBase:'/api/gmail/mail/send', fromLabel:'other@gmail.com (Gmail)'},
   // {id:'imap-1',  label:'you@custom.com',     type:'yahoo', icon:'📮', apiBase:'/api/yahoo',  sendBase:'/api/yahoo/mail/send', fromLabel:'you@custom.com (IMAP)'},
 ];
+
+/* ════════════════════════════════════════════════════════════════════
+ * INTEGRATION REGISTRY — planned future sources (not yet implemented)
+ *
+ * Schema matches EMAIL_ACCOUNTS shape so the sidebar, global search,
+ * and Events timeline can consume uniformly. When building out each
+ * integration, create the /api/<type>/* serverless function first,
+ * then enable the entry here.
+ *
+ * const INTEGRATION_ACCOUNTS = [
+ *   // Cloud storage — file sync + search
+ *   {id:'dropbox',   label:'Dropbox',            type:'dropbox', icon:'📁', apiBase:'/api/dropbox',  listPath:'/files',          searchable:true,  kind:'files'},
+ *   {id:'craft',     label:'Craft.do',           type:'craft',   icon:'📝', apiBase:'/api/craft',    listPath:'/documents',      searchable:true,  kind:'documents'},
+ *
+ *   // Communication — messages treated like additional email sources
+ *   {id:'sms',       label:'iMessage / SMS',     type:'sms',     icon:'💬', apiBase:'/api/sms',      sendBase:'/api/sms/send',   searchable:true,  kind:'messages'},
+ *   {id:'phone',     label:'Phone (Call Log)',   type:'phone',   icon:'📞', apiBase:'/api/phone',    searchable:true,  kind:'calls'},
+ *
+ *   // AI engines — added to the model dropdown + Council rotation
+ *   {id:'grok',      label:'Grok (xAI)',         type:'ai',      icon:'🤖', apiBase:'/api/ai',       modelParam:'grok',          kind:'ai-engine'},
+ * ];
+ *
+ * ENV VARS (not yet set in Netlify):
+ *   DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN
+ *   CRAFT_API_TOKEN
+ *   SMS_BRIDGE_URL, SMS_BRIDGE_TOKEN          (Mac iMessage bridge or Twilio)
+ *   PHONE_BRIDGE_URL, PHONE_BRIDGE_TOKEN      (call log sync)
+ *   XAI_API_KEY                               (Grok)
+ *
+ * WIRING POINTS (where each integration will plug into the UI once live):
+ *   1. Global search — add a source block in doGlobalSearch() that queries the integration's cache
+ *   2. Events timeline — add a block in loadEvents() mirroring the email pattern
+ *   3. AI Council — add to ai.mts model list + sendAI() dropdown
+ *   4. Sidebar — add an .ni nav item per integration with badge count
+ * ════════════════════════════════════════════════════════════════════ */
 
 // Initialize caches for all accounts
 EMAIL_ACCOUNTS.forEach(a=>{if(a.apiBase){emailAccountCache[a.id]=null;emailCacheTs[a.id]=0;}});
@@ -3548,6 +3589,12 @@ async function loadZoom(){
   if(currentZoomTab==='recordings')loadZoomRecordings();
 }
 
+let zoomSearchTerm='';
+function filterZoomMeetings(q){
+  zoomSearchTerm=(q||'').toLowerCase().trim();
+  renderZoomMeetings();
+}
+let cachedUpcoming=[];
 async function loadZoomMeetings(){
   const el=document.getElementById('zlist');
   el.innerHTML='<div class="eld">Loading meetings...</div>';
@@ -3557,47 +3604,99 @@ async function loadZoomMeetings(){
     if(d.error){el.innerHTML='<div class="eld">'+esc(d.error)+'</div>';return;}
     allZoomMeetings=d.meetings||[];
     const now=new Date();
-    const upcoming=allZoomMeetings.filter(m=>{const dt=new Date(m.start_time||0);return dt>new Date(now.getTime()-60*60000);});
-    const past=allZoomMeetings.filter(m=>{const dt=new Date(m.start_time||0);return dt<=new Date(now.getTime()-60*60000);});
-
-    // Render upcoming (sorted soonest first)
-    upcoming.sort((a,b)=>new Date(a.start_time||0).getTime()-new Date(b.start_time||0).getTime());
-    if(!upcoming.length){el.innerHTML='<div class="eld">No upcoming meetings. Click "Schedule" or "⚡ Instant" to create one.</div>';}
-    else{
-      let html='';
-      upcoming.forEach(m=>{
-        const dt=m.start_time?new Date(m.start_time):null;
-        const timeLabel=dt?getTimeLabel(dt):'TBD';
-        const dateStr=dt?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'}):'';
-        const timeStr=dt?dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
-        const isLive=dt&&Math.abs(now-dt)<m.duration*60000&&now>=dt;
-        const isSoon=dt&&(dt-now)>0&&(dt-now)<30*60000;
-        const borderColor=isLive?'var(--green)':isSoon?'var(--amber)':'var(--border)';
-        const liveTag=isLive?'<span style="font-size:9px;padding:2px 6px;border-radius:10px;background:rgba(52,211,153,0.15);color:var(--green);font-family:var(--mono);animation:pulse 2s infinite;">● LIVE NOW</span>':'';
-        const soonTag=isSoon&&!isLive?'<span style="font-size:9px;padding:2px 6px;border-radius:10px;background:rgba(251,191,36,0.15);color:var(--amber);font-family:var(--mono);">Starting soon</span>':'';
-        html+=`<div class="ti" onclick="openMeetingDetail('${m.id}')" style="cursor:pointer;border-left:3px solid ${borderColor};">
-          <div style="font-size:20px;width:32px;text-align:center;flex-shrink:0;">${isLive?'🟢':'🎥'}</div>
-          <div class="ti-body">
-            <div class="ti-title">${esc(m.topic||'Zoom Meeting')} ${liveTag}${soonTag}</div>
-            <div class="ti-meta"><span>${dateStr}</span><span>${timeStr}</span><span>${m.duration||0} min</span><span style="color:var(--text-muted);">${timeLabel}</span></div>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center;">
-            ${m.join_url?`<a href="#" onclick="event.stopPropagation();event.preventDefault();joinZoom('${esc(m.join_url)}')" style="padding:6px 14px;border-radius:6px;background:${isLive?'linear-gradient(135deg,#2d8cff,#0b5cff)':'var(--accent-glow)'};border:1px solid ${isLive?'transparent':'var(--accent)'};color:${isLive?'#fff':'var(--accent)'};font-size:11px;text-decoration:none;font-family:var(--font);font-weight:${isLive?'700':'400'};">${isLive?'JOIN':'Join'}</a>`:''}
-          </div>
-        </div>`;
-      });
-      el.innerHTML=html;
-    }
-
-    // Update hero card with next meeting
-    updateZoomHero(upcoming);
-
-    // Sidebar badge
+    cachedUpcoming=allZoomMeetings.filter(m=>{const dt=new Date(m.start_time||0);return dt>new Date(now.getTime()-60*60000);}).sort((a,b)=>new Date(a.start_time||0).getTime()-new Date(b.start_time||0).getTime());
+    updateZoomHero(cachedUpcoming);
+    renderZoomMeetings();
     const zb=document.getElementById('zbadge');
-    if(zb){if(upcoming.length>0){zb.textContent=upcoming.length;zb.style.display='inline';}else{zb.style.display='none';}}
+    if(zb){if(cachedUpcoming.length>0){zb.textContent=cachedUpcoming.length;zb.style.display='inline';}else{zb.style.display='none';}}
   }catch(e){el.innerHTML='<div class="eld">Error loading Zoom meetings.</div>';}
 }
-
+function renderZoomMeetings(){
+  const el=document.getElementById('zlist');
+  const countEl=document.getElementById('zoom-count');
+  const now=new Date();
+  let meetings=cachedUpcoming;
+  if(zoomSearchTerm){
+    meetings=meetings.filter(m=>((m.topic||'')+' '+(m.id||'')).toLowerCase().includes(zoomSearchTerm));
+  }
+  if(countEl){countEl.textContent=meetings.length+' meeting'+(meetings.length===1?'':'s');}
+  if(!meetings.length){
+    el.innerHTML='<div class="eld" style="padding:30px 20px;text-align:center;">'+(zoomSearchTerm?'No meetings match "'+esc(zoomSearchTerm)+'"':'No upcoming meetings. Click "Schedule" or "⚡ Instant" to create one.')+'</div>';
+    return;
+  }
+  // Group into time buckets
+  const buckets={live:[],soon:[],today:[],tomorrow:[],week:[],later:[]};
+  const todayMid=new Date(now);todayMid.setHours(0,0,0,0);
+  const tomorrowMid=new Date(todayMid);tomorrowMid.setDate(tomorrowMid.getDate()+1);
+  const weekEnd=new Date(todayMid);weekEnd.setDate(weekEnd.getDate()+7);
+  meetings.forEach(m=>{
+    const dt=new Date(m.start_time||0);
+    const isLive=dt&&Math.abs(now-dt)<(m.duration||30)*60000&&now>=dt;
+    const minsUntil=(dt-now)/60000;
+    if(isLive){buckets.live.push(m);}
+    else if(minsUntil>0&&minsUntil<60){buckets.soon.push(m);}
+    else if(dt>=todayMid&&dt<tomorrowMid){buckets.today.push(m);}
+    else if(dt>=tomorrowMid&&dt<new Date(tomorrowMid.getTime()+86400000)){buckets.tomorrow.push(m);}
+    else if(dt>=todayMid&&dt<weekEnd){buckets.week.push(m);}
+    else{buckets.later.push(m);}
+  });
+  const sections=[
+    {key:'live',label:'● Happening Now',color:'var(--green)',glow:true},
+    {key:'soon',label:'Starting Within the Hour',color:'var(--amber)',glow:true},
+    {key:'today',label:'Later Today',color:'var(--accent)',glow:false},
+    {key:'tomorrow',label:'Tomorrow',color:'var(--text)',glow:false},
+    {key:'week',label:'This Week',color:'var(--text-dim)',glow:false},
+    {key:'later',label:'Later',color:'var(--text-muted)',glow:false},
+  ];
+  let html='';
+  sections.forEach(sec=>{
+    const items=buckets[sec.key];
+    if(!items.length)return;
+    html+=`<div style="padding:10px 16px;background:${sec.glow?sec.color.replace('var(--','rgba('+(sec.key==='live'?'52,211,153':'251,191,36')+',0.08)').replace(')','').replace('var(--','').replace(')',''):'var(--surface-2)'};border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:${sec.color};text-transform:uppercase;letter-spacing:0.7px;">
+      ${sec.label} <span style="font-family:var(--mono);font-weight:500;opacity:0.7;">(${items.length})</span>
+    </div>`;
+    items.forEach(m=>{
+      const dt=m.start_time?new Date(m.start_time):null;
+      const dateStr=dt?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'}):'';
+      const timeStr=dt?dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'}):'';
+      const isLive=sec.key==='live';
+      const borderColor=isLive?'var(--green)':sec.key==='soon'?'var(--amber)':sec.key==='today'?'var(--accent)':'var(--border)';
+      const countdown=dt&&!isLive?getTimeLabel(dt):'';
+      html+=`<div class="ti" onclick="openMeetingDetail('${m.id}')" style="cursor:pointer;border-left:3px solid ${borderColor};padding:12px 16px;">
+        <div style="font-size:22px;width:32px;text-align:center;flex-shrink:0;">${isLive?'🟢':'🎥'}</div>
+        <div class="ti-body">
+          <div class="ti-title" style="font-size:14px;">${esc(m.topic||'Zoom Meeting')}</div>
+          <div class="ti-meta" style="margin-top:4px;">
+            <span style="font-weight:600;color:var(--text-dim);">${dateStr}</span>
+            <span style="color:var(--text-dim);">${timeStr}</span>
+            <span>${m.duration||0} min</span>
+            <span style="font-family:var(--mono);color:var(--text-muted);font-size:10px;">ID: ${m.id}</span>
+            ${countdown?`<span style="color:${isLive?'var(--green)':sec.key==='soon'?'var(--amber)':'var(--accent)'};font-weight:600;">${countdown}</span>`:''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+          <button onclick="event.stopPropagation();copyZoomLink('${esc(m.join_url||'')}',this)" title="Copy join link" style="padding:6px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;font-family:var(--font);">📋</button>
+          ${m.join_url?`<a href="#" onclick="event.stopPropagation();event.preventDefault();joinZoom('${esc(m.join_url)}')" style="padding:6px 14px;border-radius:6px;background:${isLive?'linear-gradient(135deg,#2d8cff,#0b5cff)':sec.key==='soon'?'var(--amber-dim)':'var(--accent-glow)'};border:1px solid ${isLive?'transparent':sec.key==='soon'?'var(--amber)':'var(--accent)'};color:${isLive?'#fff':sec.key==='soon'?'var(--amber)':'var(--accent)'};font-size:11px;text-decoration:none;font-family:var(--font);font-weight:${isLive?'700':'500'};">${isLive?'JOIN NOW':'Join'}</a>`:''}
+        </div>
+      </div>`;
+    });
+  });
+  el.innerHTML=html;
+}
+function copyZoomLink(url,btn){
+  if(!url)return;
+  try{
+    navigator.clipboard.writeText(url).then(()=>{
+      const orig=btn.textContent;
+      btn.textContent='✓';
+      btn.style.background='var(--green-dim)';
+      btn.style.color='var(--green)';
+      setTimeout(()=>{btn.textContent=orig;btn.style.background='';btn.style.color='';},1200);
+    });
+  }catch(e){
+    prompt('Copy this link:',url);
+  }
+}
 function renderPastMeetings(){
   const el=document.getElementById('zpast-list');
   const now=new Date();
