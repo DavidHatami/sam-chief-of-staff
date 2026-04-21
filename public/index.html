@@ -3417,8 +3417,8 @@ function saveProjectField(field,value){
     try{
       const r=await fetch('/api/projects/'+currentProject.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({[field]:value})});
       if(r.ok){currentProject[field]=value;}
-      else{console.warn('Project save failed:',field);}
-    }catch(e){console.warn('Project save network error:',e);}
+      else{showToast('Project save failed ('+field+') — server returned '+r.status,'err');}
+    }catch(e){showToast('Project save failed ('+field+'): '+(e.message||'network error'),'err');}
   },800);
 }
 
@@ -3431,13 +3431,22 @@ async function addKnowledge(){
   if(!title||!content){if(!title)document.getElementById('kb-title').style.borderColor='var(--red)';if(!content)document.getElementById('kb-content').style.borderColor='var(--red)';return;}
   try{
     const r=await fetch('/api/projects/'+currentProject.id+'/kb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,content,type})});
+    if(!r.ok){
+      const errText=await r.text().catch(()=>'');
+      showToast('KB add failed: '+(errText.substring(0,100)||'server returned '+r.status),'err');
+      return;
+    }
     const d=await r.json();
     if(d.success){
       document.getElementById('pd-kb-add').style.display='none';
       document.getElementById('kb-title').value='';document.getElementById('kb-content').value='';
       openProject(currentProject.id);
+    }else{
+      showToast('KB add failed: '+(d.error||'server rejected'),'err');
     }
-  }catch(e){}
+  }catch(e){
+    showToast('KB add failed: '+(e.message||'network error'),'err');
+  }
 }
 
 async function deleteKB(kbId){
@@ -4666,11 +4675,15 @@ async function saveTask(){
 async function deleteTask(id){
   if(!confirm('Delete this task?'))return;
   try{
-    await fetch('/api/tasks/'+id,{method:'DELETE'});
+    const r=await fetch('/api/tasks/'+id,{method:'DELETE'});
+    if(!r.ok){showToast('Delete failed — server returned '+r.status,'err');return;}
     allTasks=allTasks.filter(t=>t.id!==id);
     renderTasks();
     updateDashboardTasks();
-  }catch(e){}
+    showToast('Task deleted','ok');
+  }catch(e){
+    showToast('Delete failed: '+(e.message||'network error'),'err');
+  }
 }
 
 function updateDashboardTasks(){
