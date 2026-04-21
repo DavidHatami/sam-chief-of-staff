@@ -198,7 +198,10 @@ export default async (req: Request, context: Context) => {
         return new Response(JSON.stringify({ error: "Council requires Anthropic API key." }), { status: 500, headers: { "Content-Type": "application/json" } });
       }
 
-      // Fire all available models simultaneously
+      // Fire all available models simultaneously with an 18s ceiling per call —
+      // leaves ~8s headroom for synthesis within Netlify's 26s budget.
+      const modelAbort = new AbortController();
+      const modelTimeout = setTimeout(() => modelAbort.abort(), 18000);
       const calls: Array<{ name: string; promise: Promise<Response> }> = [];
 
       // Claude
@@ -208,6 +211,7 @@ export default async (req: Request, context: Context) => {
           method: "POST",
           headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-opus-4-6", max_tokens: 1024, system: SYSTEM_PROMPT, messages: [{ role: "user", content: prompt }] }),
+          signal: modelAbort.signal,
         }),
       });
 
@@ -219,6 +223,7 @@ export default async (req: Request, context: Context) => {
             method: "POST",
             headers: { Authorization: `Bearer ${OPENAI_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({ model: "gpt-5.4", messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: prompt }], max_completion_tokens: 1024 }),
+            signal: modelAbort.signal,
           }),
         });
       }
@@ -231,12 +236,14 @@ export default async (req: Request, context: Context) => {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ system_instruction: { parts: [{ text: SYSTEM_PROMPT }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 1024, temperature: 0.7 } }),
+            signal: modelAbort.signal,
           }),
         });
       }
 
       // Wait for all to complete
       const results = await Promise.allSettled(calls.map(c => c.promise));
+      clearTimeout(modelTimeout);
       const responses: Array<{ model: string; reply: string; status: string }> = [];
 
       for (let i = 0; i < results.length; i++) {
@@ -291,7 +298,12 @@ ${truncated.map(r => `── ${r.model} ──\n${r.reply}`).join("\n\n")}
 Synthesize now (be concise, no preamble):`;
 
       try {
-        // Use Sonnet for synthesis — 3-5x faster than Opus, plenty smart for merging
+        // Use Sonnet for synthesis — 3-5x faster than Opus, plenty smart for merging.
+        // Explicit 10s timeout so we fall back to best individual response within
+        // Netlify's 26s function budget — previously synthesis could hang and take down
+        // the whole response with a 502 instead of the graceful fallback below.
+        const synthAbort = new AbortController();
+        const synthTimeout = setTimeout(() => synthAbort.abort(), 10000);
         const synthResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -301,7 +313,9 @@ Synthesize now (be concise, no preamble):`;
             system: "You are SAM's Council Synthesizer. Combine multiple AI perspectives into one superior answer. Be direct and concise. Credit models by name when they contribute unique insights. End with a brief [Council Notes] line.",
             messages: [{ role: "user", content: synthesisPrompt }],
           }),
+          signal: synthAbort.signal,
         });
+        clearTimeout(synthTimeout);
 
         const synthData = await synthResp.json();
         const synthesized = synthData.content?.map((b: any) => b.type === "text" ? b.text : "").join("") || "Synthesis error: " + JSON.stringify(synthData.error || synthData).substring(0, 200);
