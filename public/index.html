@@ -1062,23 +1062,37 @@ function saveAlarms(a){try{localStorage.setItem('sam-alarms',JSON.stringify(a));
 function checkAlarms(now){
   const alarms=getAlarms();
   let changed=false;
-  alarms.forEach(function(a){
+  const DAY_MS=86400000;
+  const nowMs=now.getTime();
+  // First pass — prune triggered alarms older than 24h to keep localStorage tidy
+  const kept=alarms.filter(a=>!(a.triggered&&a.triggeredAt&&(nowMs-a.triggeredAt>DAY_MS)));
+  if(kept.length!==alarms.length){changed=true;}
+  kept.forEach(function(a){
     if(a.triggered)return;
-    // Alarm stored as ISO in ET; trigger when now >= alarm time (within 60s window)
     const at=new Date(a.time).getTime();
-    const diff=now.getTime()-at;
-    if(diff>=0&&diff<60000){
-      a.triggered=true;changed=true;
-      fireAlarm(a);
+    const diff=nowMs-at;
+    // Fire if alarm time has passed and we haven't fired yet — catches sleep-through
+    // (was 60s window; now fires any time we notice it's past due)
+    if(diff>=0){
+      a.triggered=true;
+      a.triggeredAt=nowMs;
+      changed=true;
+      // Mark whether this was on-time or overdue (>5 min past)
+      const overdue=diff>300000;
+      fireAlarm(a,overdue);
     }
   });
-  if(changed)saveAlarms(alarms);
+  if(changed)saveAlarms(kept);
 }
-function fireAlarm(a){
+function fireAlarm(a,overdue){
+  const titlePrefix=overdue?'⏰ (Overdue) ':'⏰ ';
+  const at=new Date(a.time);
+  const timeStr=at.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  const overdueNote=overdue?' · was set for '+timeStr:' — click to dismiss';
   // Browser notification (if permission granted) + audio beep + on-screen toast
   try{
     if('Notification' in window&&Notification.permission==='granted'){
-      new Notification('⏰ '+(a.label||'Alarm'),{body:new Date(a.time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}),tag:'sam-alarm-'+a.id});
+      new Notification(titlePrefix+(a.label||'Alarm'),{body:overdue?'Missed — was set for '+timeStr:timeStr,tag:'sam-alarm-'+a.id});
     }
   }catch(e){}
   try{
@@ -1090,8 +1104,9 @@ function fireAlarm(a){
   }catch(e){}
   // Toast
   const t=document.createElement('div');
-  t.style.cssText='position:fixed;top:24px;right:24px;z-index:9999;padding:14px 18px;background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,0.5);font-family:var(--font);font-weight:600;max-width:320px;cursor:pointer;';
-  t.innerHTML='⏰ '+(a.label?a.label:'Alarm').replace(/</g,'&lt;')+'<div style="font-size:11px;font-weight:400;opacity:0.85;margin-top:3px;font-family:var(--mono);">'+new Date(a.time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+' — click to dismiss</div>';
+  const bg=overdue?'linear-gradient(135deg,var(--amber),#c2410c)':'linear-gradient(135deg,var(--accent),#7c3aed)';
+  t.style.cssText='position:fixed;top:24px;right:24px;z-index:9999;padding:14px 18px;background:'+bg+';color:#fff;border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,0.5);font-family:var(--font);font-weight:600;max-width:320px;cursor:pointer;';
+  t.innerHTML=titlePrefix+(a.label?String(a.label).replace(/</g,'&lt;'):'Alarm')+'<div style="font-size:11px;font-weight:400;opacity:0.85;margin-top:3px;font-family:var(--mono);">'+timeStr+overdueNote+'</div>';
   t.onclick=function(){t.remove();};
   document.body.appendChild(t);
   setTimeout(()=>{if(t.parentNode)t.remove();},20000);
