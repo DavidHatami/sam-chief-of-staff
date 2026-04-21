@@ -2204,6 +2204,7 @@ async function loadCal(){
           ${organizer?'<div class="ce-detail-row"><span>\uD83D\uDC64</span><span>'+esc(organizer)+'</span></div>':''}
           <div class="ce-detail-row"><span>\uD83D\uDCC2</span><span>${e._src} Calendar</span></div>
           ${isZoom&&e.location?.displayName?'<button class="ce-action" onclick="event.stopPropagation();window.open(\''+esc(typeof e.location==='string'?e.location:e.location.displayName||'')+'\',\'_blank\')">\uD83C\uDFA5 Join Meeting</button>':''}
+          <button class="ce-action" onclick="event.stopPropagation();editCalEvent('${esc(e.id||'')}','${e._src||''}',${JSON.stringify({subject:e.subject||'',start:e.start?.dateTime||'',end:e.end?.dateTime||'',location:typeof loc==='string'?loc:(loc?.displayName||'')}).replace(/"/g,'&quot;')})">✏️ Edit</button>
           <button class="ce-action" style="background:var(--red);margin-left:6px;" onclick="event.stopPropagation();deleteCalEvent('${esc(e.id||'')}','${e._src||''}',this.closest('.ce'))">\uD83D\uDDD1 Delete</button>
         </div>
       </div>`;
@@ -2249,6 +2250,7 @@ function openAddEvent(){
   document.getElementById('ev-attendees').value='';
   document.getElementById('ev-save').textContent='Create Event';
   document.getElementById('ev-save').disabled=false;
+  editingEvent=null;
   document.getElementById('event-modal').style.display='flex';
   setTimeout(()=>document.getElementById('ev-title').focus(),100);
 }
@@ -2274,12 +2276,32 @@ async function saveEvent(){
   const endDT=date+'T'+endH+':'+endM+':00';
 
   const attendees=attendeesStr?attendeesStr.split(/[,;]/g).map(e=>e.trim()).filter(Boolean):[];
-  const payload={subject:title,start:startDT,end:endDT,location:loc,body:notes,attendees:attendees};
-
   const btn=document.getElementById('ev-save');
-  btn.disabled=true;btn.textContent='Creating on both calendars...';
+  btn.disabled=true;
+
+  // EDIT mode — PATCH existing event on source calendar
+  if(editingEvent&&editingEvent.id){
+    btn.textContent='Updating...';
+    const patchUrl=editingEvent.source==='Google'?'/api/gcal/event':'/api/m365/calendar';
+    const patchPayload={id:editingEvent.id,subject:title,start:startDT,end:endDT,location:loc};
+    try{
+      const r=await fetch(patchUrl,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patchPayload)});
+      const d=await r.json();
+      if(d.success){
+        btn.textContent='Updated ✓';btn.style.background='var(--green)';
+        setTimeout(()=>{closeEventModal();btn.textContent='Create Event';btn.style.background='';btn.disabled=false;editingEvent=null;cLoaded=false;loadCal();fetchMCEvents();},1200);
+      }else{
+        btn.textContent='Error: '+(d.error||'').substring(0,30);btn.style.background='var(--red)';
+        setTimeout(()=>{btn.textContent='Update Event';btn.style.background='';btn.disabled=false;},2500);
+      }
+    }catch(e){btn.textContent='Failed';btn.disabled=false;setTimeout(()=>{btn.textContent='Update Event';},2000);}
+    return;
+  }
+
+  // CREATE mode — POST to both calendars simultaneously
+  const payload={subject:title,start:startDT,end:endDT,location:loc,body:notes,attendees:attendees};
+  btn.textContent='Creating on both calendars...';
   try{
-    // Fire both M365 and Google Calendar simultaneously
     const [m365Resp,gcalResp]=await Promise.allSettled([
       fetch('/api/m365/calendar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
       fetch('/api/gcal/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
@@ -2303,31 +2325,90 @@ async function saveEvent(){
 
 async function deleteCalEvent(eventId,source,cardEl){
   if(!eventId)return;
-  if(!confirm('Delete this event from '+source+' Calendar?'))return;
+  if(!confirm('Delete this event? If it exists on both calendars, both copies will be removed.'))return;
   const delBtn=cardEl?.querySelector('.ce-action[style*="red"]');
   if(delBtn){delBtn.disabled=true;delBtn.textContent='Deleting...';}
   try{
-    let url,opts={method:'DELETE'};
-    if(source==='Google'){
-      url='/api/gcal/event?id='+encodeURIComponent(eventId);
-    }else{
-      url='/api/m365/calendar?id='+encodeURIComponent(eventId);
-    }
-    const r=await fetch(url,opts);
+    // Delete from the source calendar
+    const primaryUrl=source==='Google'
+      ?'/api/gcal/event?id='+encodeURIComponent(eventId)
+      :'/api/m365/calendar?id='+encodeURIComponent(eventId);
+    const r=await fetch(primaryUrl,{method:'DELETE'});
     const d=await r.json();
-    if(d.success){
-      if(cardEl)cardEl.style.opacity='0.3';
-      setTimeout(()=>{if(cardEl)cardEl.remove();},500);
-      // Also try to delete from the other calendar if dual-synced
-      const otherUrl=source==='Google'?'/api/m365/calendar':'/api/gcal/event';
-      // Refresh calendar views
-      setTimeout(()=>{cLoaded=false;loadCal();fetchMCEvents();},1000);
-    }else{
+    if(!d.success){
       if(delBtn){delBtn.textContent='Error';setTimeout(()=>{delBtn.textContent='🗑 Delete';delBtn.disabled=false;},2000);}
+      return;
     }
+    // Find and delete matching event on OTHER calendar (dual-sync cleanup)
+    const cardSubject=cardEl?.querySelector('.cn')?.textContent?.replace(/^[📅🎥]\s*/,'').trim()||'';
+    const cardTime=cardEl?.querySelector('.ct span')?.textContent?.split('—')[0].trim()||'';
+    const otherSource=source==='Google'?'M365':'Google';
+    try{
+      const now=new Date();const rangeEnd=new Date(now.getTime()+30*24*60*60*1000);
+      const startP=encodeURIComponent(now.toISOString());const endP=encodeURIComponent(rangeEnd.toISOString());
+      const otherListUrl=otherSource==='Google'
+        ?'/api/gcal/events?start='+startP+'&end='+endP
+        :'/api/m365/calendar?start='+startP+'&end='+endP;
+      const listResp=await fetch(otherListUrl);
+      const listData=await listResp.json();
+      const events=listData.value||[];
+      // Find matching event by subject + approximate start time
+      const match=events.find(e=>{
+        const eSubj=(e.subject||'').toLowerCase().trim();
+        return eSubj===cardSubject.toLowerCase().trim();
+      });
+      if(match&&match.id){
+        const otherDelUrl=otherSource==='Google'
+          ?'/api/gcal/event?id='+encodeURIComponent(match.id)
+          :'/api/m365/calendar?id='+encodeURIComponent(match.id);
+        await fetch(otherDelUrl,{method:'DELETE'}).catch(()=>{});
+      }
+    }catch(e){/* silent - primary delete already succeeded */}
+    if(cardEl)cardEl.style.opacity='0.3';
+    setTimeout(()=>{if(cardEl)cardEl.remove();},500);
+    setTimeout(()=>{cLoaded=false;loadCal();fetchMCEvents();},1000);
   }catch(e){
     if(delBtn){delBtn.textContent='Failed';setTimeout(()=>{delBtn.textContent='🗑 Delete';delBtn.disabled=false;},2000);}
   }
+}
+
+// ── EDIT CALENDAR EVENT ──
+let editingEvent=null;
+function editCalEvent(eventId,source,eventData){
+  if(!eventId)return;
+  editingEvent={id:eventId,source:source};
+  const startDT=eventData.start;
+  let datePart='',timePart='09:00',durMin=30;
+  if(startDT){
+    const dt=new Date(startDT);
+    if(!isNaN(dt.getTime())){
+      const y=dt.getFullYear();
+      const mo=String(dt.getMonth()+1).padStart(2,'0');
+      const d=String(dt.getDate()).padStart(2,'0');
+      datePart=y+'-'+mo+'-'+d;
+      const h=String(dt.getHours()).padStart(2,'0');
+      const m=String(Math.floor(dt.getMinutes()/15)*15).padStart(2,'0');
+      timePart=h+':'+m;
+    }
+  }
+  if(eventData.end&&eventData.start){
+    const startT=new Date(eventData.start).getTime();
+    const endT=new Date(eventData.end).getTime();
+    if(!isNaN(startT)&&!isNaN(endT)&&endT>startT){
+      durMin=Math.round((endT-startT)/60000);
+    }
+  }
+  document.getElementById('ev-title').value=eventData.subject||'';
+  document.getElementById('ev-date').value=datePart||new Date().toISOString().split('T')[0];
+  document.getElementById('ev-start').value=timePart;
+  document.getElementById('ev-dur').value=String(durMin);
+  document.getElementById('ev-loc').value=eventData.location||'';
+  document.getElementById('ev-notes').value='';
+  document.getElementById('ev-attendees').value='';
+  document.getElementById('ev-save').textContent='Update Event';
+  document.getElementById('ev-save').disabled=false;
+  document.getElementById('event-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('ev-title').focus(),100);
 }
 
 function openCalTask(){
