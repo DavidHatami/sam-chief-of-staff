@@ -2349,22 +2349,26 @@ async function toggleFlag(){
 
   try{
     if(flagged){
-      await fetch('/api/flags?id='+encodeURIComponent(currentEmail.id)+'&acct='+currentMailAPI,{method:'DELETE'});
+      const r=await fetch('/api/flags?id='+encodeURIComponent(currentEmail.id)+'&acct='+currentMailAPI,{method:'DELETE'});
+      if(!r.ok){showToast('Unpin failed — server returned '+r.status,'err');btn.disabled=false;return;}
       emailFlags=emailFlags.filter(f=>!(f.id===currentEmail.id&&f.account===currentMailAPI));
     }else{
       const fromName=currentEmail.from?.emailAddress?.name||currentEmail.from?.emailAddress?.address||'';
-      await fetch('/api/flags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      const r=await fetch('/api/flags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         id:currentEmail.id,
         account:currentMailAPI,
         subject:currentEmail.subject||'',
         from:fromName,
         color:'default'
       })});
+      if(!r.ok){showToast('Pin failed — server returned '+r.status,'err');btn.disabled=false;return;}
       emailFlags.push({id:currentEmail.id,account:currentMailAPI,subject:currentEmail.subject||'',from:fromName,flaggedAt:new Date().toISOString(),color:'default'});
     }
     updateFlagButton();
     updateFlagIndicators();
-  }catch(e){}
+  }catch(e){
+    showToast('Pin/unpin failed: '+(e.message||'network error'),'err');
+  }
   btn.disabled=false;
 }
 
@@ -4500,36 +4504,45 @@ async function toggleTask(id){
   if(!t)return;
   const nextStatus=t.status==='done'?'todo':'done';
   try{
-    await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:nextStatus})});
+    const r=await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:nextStatus})});
+    if(!r.ok){showToast('Task update failed — server returned '+r.status,'err');return;}
     t.status=nextStatus;
     t.updatedAt=new Date().toISOString();
     renderTasks();
     updateDashboardTasks();
-  }catch(e){}
+  }catch(e){
+    showToast('Task update failed: '+(e.message||'network error'),'err');
+  }
 }
 
 async function quickStatus(id,newStatus){
   const t=allTasks.find(x=>x.id===id);
   if(!t)return;
   try{
-    await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:newStatus})});
+    const r=await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:newStatus})});
+    if(!r.ok){showToast('Status change failed — server returned '+r.status,'err');return;}
     t.status=newStatus;
     t.updatedAt=new Date().toISOString();
     renderTasks();
     updateDashboardTasks();
-  }catch(e){}
+  }catch(e){
+    showToast('Status change failed: '+(e.message||'network error'),'err');
+  }
 }
 
 async function quickPriority(id,newPriority){
   const t=allTasks.find(x=>x.id===id);
   if(!t)return;
   try{
-    await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({priority:newPriority})});
+    const r=await fetch('/api/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({priority:newPriority})});
+    if(!r.ok){showToast('Priority change failed — server returned '+r.status,'err');return;}
     t.priority=newPriority;
     t.updatedAt=new Date().toISOString();
     renderTasks();
     updateDashboardTasks();
-  }catch(e){}
+  }catch(e){
+    showToast('Priority change failed: '+(e.message||'network error'),'err');
+  }
 }
 
 function openAddTask(){
@@ -4628,14 +4641,22 @@ async function saveTask(){
   const btn=document.getElementById('tf-save');
   btn.disabled=true;btn.textContent='Saving...';
   try{
+    let r;
     if(editingTaskId){
-      await fetch('/api/tasks/'+editingTaskId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      r=await fetch('/api/tasks/'+editingTaskId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     }else{
-      await fetch('/api/tasks/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      r=await fetch('/api/tasks/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    }
+    if(!r.ok){
+      showToast('Task save failed — server returned '+r.status,'err');
+      btn.textContent='Save failed — retry';
+      btn.disabled=false;
+      return;
     }
     closeModal();
     await loadTasks();
   }catch(e){
+    showToast('Task save failed: '+(e.message||'network error'),'err');
     btn.textContent='Error — retry';
   }
   btn.disabled=false;
