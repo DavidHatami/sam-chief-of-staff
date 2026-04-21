@@ -76,7 +76,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 .ce .ce-action{display:inline-block;margin-top:8px;padding:6px 14px;border-radius:6px;background:var(--accent);color:#fff;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;border:none;font-family:var(--font);}
 .cdh{font-size:15px;font-weight:600;margin:20px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border);}.cdh:first-child{margin-top:0;}
 .ig{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
-.ic{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;}
+.ic{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px 16px;}
 .ic .ii{font-size:22px;margin-bottom:10px;}.ic h4{font-size:14px;font-weight:600;margin-bottom:5px;}.ic p{font-size:12px;color:var(--text-dim);line-height:1.5;}
 .is{margin-top:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:12px;display:inline-block;}
 /* AI Workbench */
@@ -100,11 +100,11 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 .ai-input button{padding:10px 20px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.15s;}
 .ai-input button:hover{background:#3a6ae8;}.ai-input button:disabled{opacity:0.5;cursor:not-allowed;}
 .ai-slots{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:20px;}
-.ai-slot{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.ai-slot{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px;}
 .ai-slot h4{font-size:13px;font-weight:600;margin-bottom:4px;}.ai-slot p{font-size:11px;color:var(--text-dim);}
 .ai-slot .slot-status{font-size:10px;font-family:var(--mono);margin-top:8px;padding:2px 8px;border-radius:10px;display:inline-block;}
 /* Mini Calendar */
-.mcal{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.mcal{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px;}
 .mcal-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
 .mcal-hdr h4{font-size:13px;font-weight:600;}
 .mcal-hdr button{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;padding:2px 6px;}
@@ -501,7 +501,7 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
     <button class="etb-f" onclick="zoomTab('transcripts',this)">AI Transcripts</button>
   </div>
   <!-- Meeting detail panel (slides in on click) -->
-  <div id="zoom-detail" style="display:none;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;">
+  <div id="zoom-detail" style="display:none;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:12px;">
     <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px;">
       <div>
         <div id="zd-topic" style="font-size:16px;font-weight:700;"></div>
@@ -3817,10 +3817,22 @@ function updateDashboardTasks(){
 
 // Move task modal to body root so it works from all pages (Calendar, Zoom, etc.)
 (function(){var m=document.getElementById('task-modal');if(m)document.body.appendChild(m);})();
-// Close modal on backdrop click
-document.getElementById('task-modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
-// Close modal on Escape
-document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+// Universal modal close: backdrop-click or Escape closes whichever is visible
+(function(){
+  var modalIds=['task-modal','event-modal','zoom-modal','proj-modal','inst-modal'];
+  modalIds.forEach(function(id){
+    var el=document.getElementById(id);
+    if(!el)return;
+    el.addEventListener('click',function(e){if(e.target===el){el.style.display='none';}});
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='Escape')return;
+    for(var i=0;i<modalIds.length;i++){
+      var el=document.getElementById(modalIds[i]);
+      if(el && el.style.display!=='none' && el.style.display!==''){el.style.display='none';return;}
+    }
+  });
+})();
 
 // Load tasks on init
 loadTasks();
