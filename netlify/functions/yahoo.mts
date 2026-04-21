@@ -119,19 +119,23 @@ export default async (req: Request, context: Context) => {
         const cacheKey = `body:${msgId}`;
         const cached = getCached(bodyCache, cacheKey, BODY_TTL_MS);
         if (cached) {
-          // If not a prefetch, also fire a background mark-as-read since cache hit skipped server
+          // If not a prefetch and still unread, mark-as-read on the server BEFORE returning.
+          // Previously this was fire-and-forget via IIFE, but serverless kills the Lambda
+          // after response is sent, so the async work could silently never complete —
+          // cached body showed isRead=true while server still had it unread, causing state oscillation.
+          // Awaiting is ~300-500ms slower than pure cache hit but still faster than no-cache (~1s+), and correct.
           if (!isPrefetch && !cached.isRead) {
-            // Don't await — fire-and-forget
-            (async () => {
-              try {
-                const c = await getImapClient();
-                const l = await c.getMailboxLock(folderMap_static(folder));
-                try { await c.messageFlagsAdd(String(msgId), ["\\Seen"], { uid: true }); } catch (e) {}
-                l.release();
-                await c.logout();
-              } catch (e) {}
-            })();
-            cached.isRead = true;
+            try {
+              const c = await getImapClient();
+              const l = await c.getMailboxLock(folderMap_static(folder));
+              try { await c.messageFlagsAdd(String(msgId), ["\\Seen"], { uid: true }); } catch (e) {}
+              l.release();
+              await c.logout();
+              cached.isRead = true;
+              invalidateListCache(); // list counts changed
+            } catch (e) {
+              // If mark-read fails, leave cached.isRead alone so UI state matches server
+            }
           }
           return new Response(JSON.stringify(cached), { headers: { ...headers, "X-Cache": "hit" } });
         }
