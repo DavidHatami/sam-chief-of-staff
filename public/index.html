@@ -1811,21 +1811,74 @@ async function preloadAllEmail(){
   results.forEach((r,i)=>{if(r.status==='fulfilled'&&!r.value?.error){const id=toFetch[i].id;emailAccountCache[id]=r.value.value||[];emailCacheTs[id]=Date.now();}});
 }
 
+// Diffed renderer — flicker-free. Only updates rows whose content actually changed.
+// Before: list.innerHTML=html on every refresh wiped all rows and repainted, causing flash
+// and pulling focus when auto-click fired after background refresh. Now: we key each row
+// by message id, compute a signature from (isRead, subject, preview, timestamp), compare
+// to the last render, and only touch DOM nodes whose signature moved. Empty state still
+// does a clean wipe because there are no rows to preserve.
+let _lastEmailSig = new Map(); // messageId -> signature string
+let _lastEmailOrder = [];      // messageId[] in last rendered order
 function renderEmailList(msgs){
   const list=document.getElementById('elist');
-  let ur=0,html='';
-  if(!msgs||!msgs.length){list.innerHTML='<div class="eld">No emails.</div>';return;}
-  msgs.forEach(m=>{
-    const u=!m.isRead;if(u)ur++;
+  if(!msgs||!msgs.length){
+    list.innerHTML='<div class="eld">No emails.</div>';
+    _lastEmailSig.clear(); _lastEmailOrder=[];
+    document.getElementById('ecount').textContent='0 messages';
+    document.getElementById('sur').textContent='0';
+    const b=document.getElementById('ebadge');if(b){b.style.display='none';}
+    return;
+  }
+  let ur=0;
+  const currentIds=[];
+  const sigs=new Map();
+  // Build row node for one message (reused for both patch-in-place and create)
+  function buildRowHtml(m,u){
     const fn=m.from?.emailAddress?.name||m.from?.emailAddress?.address||'unknown';
     const subj=m.subject||'(no subject)';
     const prev=m.bodyPreview||'';
     const dt=new Date(m.receivedDateTime);
     const ts=dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
     const mid=encodeURIComponent(m.id||'');
-    html+=`<div class="ei${u?' unread':''}" onclick="readEmail('${mid}',this)" style="cursor:pointer;"><div class="edot ${u?'u':'r'}"></div><div style="min-width:0"><div class="ef">${esc(fn)}</div><div class="es">${esc(subj)}</div><div class="ep">${esc(prev.substring(0,120))}</div></div><div class="et">${ts}</div></div>`;
+    return {
+      html:`<div class="ei${u?' unread':''}" data-mid="${esc(m.id||'')}" onclick="readEmail('${mid}',this)" style="cursor:pointer;"><div class="edot ${u?'u':'r'}"></div><div style="min-width:0"><div class="ef">${esc(fn)}</div><div class="es">${esc(subj)}</div><div class="ep">${esc(prev.substring(0,120))}</div></div><div class="et">${ts}</div></div>`,
+      sig:`${u?1:0}|${subj}|${prev.substring(0,120)}|${ts}`
+    };
+  }
+  msgs.forEach(m=>{
+    const u=!m.isRead;if(u)ur++;
+    const mid=m.id||'';
+    currentIds.push(mid);
+    const built=buildRowHtml(m,u);
+    sigs.set(mid,built.sig);
   });
-  list.innerHTML=html;
+  // Decide: is this the first render, or a diff?
+  const isFirstRender = !list.children.length || list.querySelector('.eld');
+  const orderChanged = _lastEmailOrder.length !== currentIds.length ||
+    _lastEmailOrder.some((id,i)=>currentIds[i]!==id);
+  if(isFirstRender || orderChanged){
+    // Order shift or empty list: rebuild once, but preserve scroll position
+    const scrollY = list.scrollTop;
+    let html='';
+    msgs.forEach(m=>{ html += buildRowHtml(m,!m.isRead).html; });
+    list.innerHTML=html;
+    list.scrollTop = scrollY;
+  } else {
+    // Order unchanged: only patch rows whose signature changed. No flicker.
+    const rows = list.querySelectorAll('.ei');
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i];
+      const mid = r.getAttribute('data-mid') || '';
+      const newSig = sigs.get(mid);
+      const oldSig = _lastEmailSig.get(mid);
+      if(newSig && newSig !== oldSig){
+        const m = msgs[i]; const u = !m.isRead;
+        r.outerHTML = buildRowHtml(m,u).html;
+      }
+    }
+  }
+  _lastEmailSig = sigs;
+  _lastEmailOrder = currentIds;
   document.getElementById('ecount').textContent=msgs.length+' messages'+(ur?' ('+ur+' unread)':'');
   document.getElementById('sur').textContent=ur;
   const b=document.getElementById('ebadge');if(ur>0){b.textContent=ur;b.style.display='inline';}else{b.style.display='none';}
@@ -1837,18 +1890,22 @@ function renderEmailList(msgs){
     const items=list.querySelectorAll('.ei');
     let dhtml='';
     for(let i=0;i<Math.min(8,items.length);i++){
-      // Add account badge and make clickable to navigate to email
       const clone=items[i].outerHTML;
-      // Wrap with account badge and navigation
       const badgeHtml=`<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-muted);font-family:var(--mono);padding:2px 10px 0;margin-top:-2px;">${acctIcon} ${acctLabel}</div>`;
       dhtml+=`<div onclick="go('email',document.querySelectorAll('.ni')[1]);setTimeout(()=>{const rows=document.querySelectorAll('.ei');if(rows[${i}])rows[${i}].click();},200);" style="cursor:pointer;">${clone}${i===0?badgeHtml:''}</div>`;
     }
     de.innerHTML=dhtml||'<div class="eld">No emails.</div>';
   }
   updateFlagIndicators();
-  // Auto-load first email — no more "click to read" placeholder
-  const firstRow=list.querySelector('.ei');
-  if(firstRow)setTimeout(()=>firstRow.click(),80);
+  // Auto-open first email ONLY if nothing is currently displayed in the reader.
+  // Previously auto-clicked on every refresh, which stole focus during background refresh
+  // and was the second half of the flicker problem. Now: only on first open of the tab.
+  const reader = document.getElementById('er-body');
+  const readerEmpty = !reader || !reader.children.length || reader.textContent.trim()==='';
+  if(readerEmpty){
+    const firstRow=list.querySelector('.ei');
+    if(firstRow)setTimeout(()=>firstRow.click(),80);
+  }
   // Safe prefetch — fetches email bodies into cache WITHOUT marking as read
   // When user clicks, render is instant from cache. Click also marks as read then.
   setTimeout(()=>{
@@ -1999,6 +2056,18 @@ async function fetchEmailsFromAPI(folder){
     else if(acctType==='gmail'){if(f==='sent'||f==='sentitems')f='sent';else if(f==='trash')f='trash';else if(f==='drafts')f='drafts';else f='inbox';}
     else{if(f==='sent'||f==='sentitems')f='sent';else f='inbox';}
     const top=acctType==='gmail'?'25':acctType==='yahoo'?'25':'100';
+    // Yahoo fast-path: try pre-warmed blob snapshot first (~50ms). If 503 "fallback",
+    // fall through to the IMAP path. Only for inbox/sent (folders we actually warm).
+    if(acctType==='yahoo' && (f==='inbox'||f==='sent')){
+      try{
+        const fastResp=await fetch('/api/yahoo-fast/mail?folder='+f+'&top='+top);
+        if(fastResp.ok){
+          const fd=await fastResp.json();
+          if(fd.value){return fd.value;}
+        }
+        // fall through to slow path on any non-ok
+      }catch(_){/* fall through */}
+    }
     const r=await fetch(apiBase+'/mail?folder='+f+'&top='+top);
     const d=await r.json();
     if(d.error){document.getElementById('elist').innerHTML='<div class="eld">'+esc(String(d.error))+'</div>';return null;}
