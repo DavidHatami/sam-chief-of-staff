@@ -187,28 +187,37 @@ async function fetchGmailSince(sinceIso: string): Promise<IncomingMsg[]> {
 // CLAUDE CLASSIFIER + DRAFTER
 // ============================================================
 
+// Two-stage pipeline. Haiku classifies every message (cheap, fast).
+// Opus drafts replies ONLY for respond_today and respond_this_week.
+// Running 72x/day with 50 msgs each on Opus was burning ~$20-30/day.
+// Haiku is roughly 10x cheaper and more than accurate enough for 6-bucket sorting.
+
 const CLASSIFIER_SYSTEM = `You are SAM, Dr. David Hatami's email triage agent. David is an AI Ethics consultant and higher education executive. He has active consulting clients, teaches at Post University, and runs EduPolicy.ai. His inbox gets 50-100 messages a day, most worthless.
 
-For each email, classify into ONE of these buckets and explain in ONE short sentence:
+Classify each email into ONE bucket and explain in ONE short sentence:
 
-- respond_today: From a real human (client, colleague, investor, institutional contact) who needs a reply today. Something time-sensitive or relationship-critical.
+- respond_today: From a real human (client, colleague, investor, institutional contact) who needs a reply today. Time-sensitive or relationship-critical.
 - respond_this_week: Real person, professional context, but no rush. Reply within 5 business days.
 - fyi: Worth reading but no action needed. Updates, announcements.
-- newsletter: Recurring marketing, industry updates, subscriptions. Skim or ignore.
+- newsletter: Recurring marketing, industry updates, subscriptions.
 - spam: Cold sales, phishing, obvious junk, unsolicited offers.
-- invoice_receipt: Transactional — invoices, receipts, shipping, account notifications. File and move on.
+- invoice_receipt: Transactional — invoices, receipts, shipping, account notifications.
 
-For respond_today and respond_this_week ONLY, draft a reply in David's voice. Rules for drafts:
-- Short. 2-4 sentences maximum. He edits before sending.
+Return ONLY valid JSON. No markdown fences, no preamble. Schema:
+{"bucket":"<bucket>","reasoning":"<one sentence>"}`;
+
+const DRAFTER_SYSTEM = `You are SAM, drafting a reply in Dr. David Hatami's voice. He's an AI Ethics consultant and higher ed executive. He'll edit before sending.
+
+Rules:
+- Short. 2-4 sentences maximum.
 - No corporate wallpaper. No "I hope this finds you well." No "Per my last email."
 - Banned words: leverage, utilize, facilitate, robust, synergy, bandwidth, deep dive, circle back, low-hanging fruit, ecosystem, landscape, navigate, comprehensive.
 - Contractions always: don't, can't, I'll.
-- Direct and warm. He signs off "— David" or just "— D" depending on familiarity.
-- If the sender is clearly a new contact (no prior relationship apparent), use "— David Hatami".
-- If you don't have enough context to draft confidently, set draftReply to null.
+- Direct and warm. Signs off "— David" or "— D" depending on familiarity.
+- New contact (no prior relationship apparent): use "— David Hatami".
+- If you don't have enough context to draft confidently, return exactly: NO_DRAFT
 
-Return ONLY valid JSON. No markdown fences, no preamble. Schema:
-{"bucket":"<bucket>","reasoning":"<one sentence>","draftReply":"<text or null>"}`;
+Return ONLY the reply text or the literal string NO_DRAFT. No preamble, no JSON.`;
 
 async function classifyOne(msg: IncomingMsg): Promise<{
   bucket: TriageBucket;
@@ -226,7 +235,8 @@ Account: ${msg.account}
 Body preview:
 ${msg.bodyPreview}`;
 
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+  // STAGE 1 — Haiku classifier (cheap)
+  const classifyResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -234,33 +244,59 @@ ${msg.bodyPreview}`;
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-opus-4-5",
-      max_tokens: 600,
+      model: "claude-haiku-4-5",
+      max_tokens: 200,
       system: CLASSIFIER_SYSTEM,
       messages: [{ role: "user", content: userPrompt }],
     }),
   });
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Claude triage failed: ${resp.status} ${err}`);
+  if (!classifyResp.ok) {
+    const err = await classifyResp.text();
+    throw new Error(`Claude classify failed: ${classifyResp.status} ${err}`);
   }
-  const data = await resp.json();
-  const text = data.content?.[0]?.text || "{}";
-  // Strip any stray code fences defensively
-  const clean = text.replace(/```json|```/g, "").trim();
+  const classifyData = await classifyResp.json();
+  const classifyText = classifyData.content?.[0]?.text || "{}";
+  const clean = classifyText.replace(/```json|```/g, "").trim();
+
+  let bucket: TriageBucket = "fyi";
+  let reasoning = "no reasoning given";
   try {
     const parsed = JSON.parse(clean);
-    const bucket = (TRIAGE_BUCKETS as readonly string[]).includes(parsed.bucket)
-      ? parsed.bucket
-      : "fyi";
-    return {
-      bucket: bucket as TriageBucket,
-      reasoning: parsed.reasoning || "no reasoning given",
-      draftReply: parsed.draftReply ?? null,
-    };
-  } catch {
-    return { bucket: "fyi", reasoning: "classifier returned invalid JSON", draftReply: null };
+    if ((TRIAGE_BUCKETS as readonly string[]).includes(parsed.bucket)) {
+      bucket = parsed.bucket as TriageBucket;
+    }
+    reasoning = parsed.reasoning || reasoning;
+  } catch {}
+
+  // STAGE 2 — Opus drafter (only for actionable buckets)
+  let draftReply: string | null = null;
+  if (bucket === "respond_today" || bucket === "respond_this_week") {
+    try {
+      const draftResp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-opus-4-5",
+          max_tokens: 500,
+          system: DRAFTER_SYSTEM,
+          messages: [{ role: "user", content: userPrompt }],
+        }),
+      });
+      if (draftResp.ok) {
+        const draftData = await draftResp.json();
+        const txt = (draftData.content?.[0]?.text || "").trim();
+        draftReply = txt === "NO_DRAFT" || !txt ? null : txt;
+      }
+    } catch {
+      // Draft failure is non-fatal — classification still stands
+    }
   }
+
+  return { bucket, reasoning, draftReply };
 }
 
 // ============================================================
