@@ -2881,8 +2881,64 @@ setInterval(updateMobileClock,1000);updateMobileClock();
   });
 })();
 
-// ── SAM DIALOGUE BOX ──
+// ── SAM DIALOGUE BOX with PERSISTENT MEMORY ──
+// SAM remembers conversations across sessions/devices/refreshes via the
+// `sam-chat-history` blob. On dashboard load, we fetch the last N turns and
+// render them so the chat panel doesn't look amnesiac. The backend (ai.mts)
+// is the source of truth — it reads from the blob on each new request and
+// persists every turn after a successful reply. The frontend's samHistory
+// is now just for current-session UI cohesion.
 let samHistory=[];
+let samHistoryLoaded=false;
+async function loadSamHistory(){
+  if(samHistoryLoaded)return;
+  samHistoryLoaded=true;
+  const msgs=document.getElementById('sam-msgs');
+  if(!msgs)return;
+  try{
+    const r=await fetch('/api/chat-history?n=30');
+    if(!r.ok)return;
+    const d=await r.json();
+    const turns=Array.isArray(d.turns)?d.turns:[];
+    if(turns.length===0)return;
+    // Render the past turns as they would have appeared. No "Thinking..."
+    // bubbles, just clean back-and-forth so it feels continuous.
+    let html='';
+    turns.forEach(t=>{
+      if(t.role==='user'){
+        html+=`<div class="ai-msg user" style="margin-bottom:10px;"><div class="av" style="width:24px;height:24px;font-size:10px;">DH</div><div class="bubble" style="font-size:13px;">${esc(t.content||'')}</div></div>`;
+      }else if(t.role==='assistant'){
+        const formatted=(typeof formatSamReply==='function')?formatSamReply(t.content||''):esc(t.content||'').replace(/\n/g,'<br>');
+        html+=`<div class="ai-msg bot" style="margin-bottom:10px;"><div class="av" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);">S</div><div class="bubble" style="font-size:13px;line-height:1.6;">${formatted}</div></div>`;
+      }
+    });
+    // Add a small "memory restored" indicator at the top once
+    const banner=`<div style="text-align:center;font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-bottom:8px;padding:4px;border-bottom:1px dashed var(--border);">↑ ${turns.length} message${turns.length===1?'':'s'} from past conversations · <a href="javascript:void(0)" onclick="clearSamMemory()" style="color:var(--text-muted);text-decoration:underline;">clear memory</a></div>`;
+    msgs.innerHTML=banner+html;
+    // Mirror the loaded turns into samHistory so the in-session UI stays consistent
+    samHistory=turns.map(t=>({role:t.role,content:t.content||''}));
+    msgs.scrollTop=msgs.scrollHeight;
+  }catch(e){
+    // Fail silently — empty history is fine
+  }
+}
+async function clearSamMemory(){
+  if(!confirm('Clear all of SAM\'s chat memory? This cannot be undone.'))return;
+  try{
+    const r=await fetch('/api/chat-history?confirm=yes',{method:'DELETE'});
+    const d=await r.json();
+    if(d.ok){
+      samHistory=[];
+      const msgs=document.getElementById('sam-msgs');
+      if(msgs)msgs.innerHTML='<div style="text-align:center;font-size:10px;color:var(--text-muted);font-family:var(--mono);padding:8px;">Memory cleared. '+(d.discarded||0)+' turns discarded.</div>';
+      if(typeof showToast==='function')showToast('SAM memory cleared ('+(d.discarded||0)+' turns)','ok');
+    }else{
+      if(typeof showToast==='function')showToast('Clear failed: '+(d.error||'unknown'),'err');
+    }
+  }catch(e){
+    if(typeof showToast==='function')showToast('Clear failed: '+(e.message||e),'err');
+  }
+}
 async function sendSAM(){
   const input=document.getElementById('sam-input');
   const text=input.value.trim();
@@ -2939,16 +2995,19 @@ async function sendSAM(){
   try{
     samHistory.push({role:'user',content:text});
     const samModel=document.getElementById('sam-model').value||'claude';
+    // Do NOT pass `history` to the backend — ai.mts now reads chat history from
+    // the persistent blob automatically, which is the source of truth across
+    // sessions/devices/refreshes. Sending stale browser-side history would
+    // override the blob and undo the memory.
     const r=await fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       model:samModel,
-      prompt:text+context,
-      history:samHistory.slice(-10)
+      prompt:text+context
     })});
     const d=await r.json();
     const reply=d.reply||d.error||'No response.';
     samHistory.push({role:'assistant',content:reply});
-    // Cap samHistory at 20 entries — only last 10 sent to API, so keep a small buffer
-    if(samHistory.length>20)samHistory=samHistory.slice(-20);
+    // Cap samHistory at 60 entries for in-session UI cohesion (DOM cap is separate at 30 children)
+    if(samHistory.length>60)samHistory=samHistory.slice(-60);
 
     const typing=document.getElementById('sam-typing');
     if(typing){
@@ -6144,6 +6203,7 @@ loadSamStatus();
 loadCronHealth();
 loadCredHealth();
 loadSmokeTest();
+loadSamHistory();
 
 // ── PREFETCH WARMUP ──
 // On dashboard load, fire small parallel requests against the read-cacheable endpoints.

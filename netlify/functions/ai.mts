@@ -24,6 +24,29 @@ WHAT TO ACTUALLY DO
 VOICE
 Direct. Opinionated. Slightly irreverent when the moment calls for it. He likes being treated as a peer, not a customer. Don't fawn. Don't apologize for being honest. If something is dumb, say it's dumb. If a plan won't work, say so and explain why.`;
 
+// ── PERSIST CHAT TURN ──
+// Best-effort write — never throws, never blocks the response. Caps retained
+// turns at HISTORY_MAX_RETAINED_TURNS to prevent the blob from growing unbounded.
+async function persistTurn(userPrompt: string, assistantReply: string, model: string) {
+  try {
+    const histStore = getStore({ name: "sam-chat-history", consistency: "strong" });
+    const stored = (await histStore.get("turns", { type: "json" })) as Array<{ role: string; content: string; at?: string; model?: string }> | null;
+    const turns = Array.isArray(stored) ? stored : [];
+    const at = new Date().toISOString();
+    turns.push({ role: "user", content: userPrompt, at, model });
+    turns.push({ role: "assistant", content: assistantReply, at, model });
+    // Cap at last N turns. Older turns are dropped — keep this generous so we
+    // don't lose useful long-term context, but bounded so blob stays under 5MB.
+    const HISTORY_MAX_RETAINED_TURNS = 400;
+    const capped = turns.length > HISTORY_MAX_RETAINED_TURNS
+      ? turns.slice(turns.length - HISTORY_MAX_RETAINED_TURNS)
+      : turns;
+    await histStore.setJSON("turns", capped);
+  } catch {
+    // Persistence failure is not fatal. The reply already went out.
+  }
+}
+
 export default async (req: Request, context: Context) => {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "POST required" }), {
@@ -40,6 +63,36 @@ export default async (req: Request, context: Context) => {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // ── PERSISTENT CHAT HISTORY ──
+    // SAM's memory across sessions/devices/refreshes lives here. Every turn is
+    // appended to a single blob keyed by ISO timestamp. On each new request we
+    // load the last 25 turns into context, regardless of what the frontend
+    // remembers — the backend is the source of truth.
+    //
+    // If the frontend explicitly passes `history` (e.g. for testing or one-off
+    // prompts that shouldn't be persisted), we use that AND skip the persist
+    // step. Otherwise: load from blob, use it, persist after.
+    const HISTORY_INJECT_TURNS = 25;
+    const HISTORY_MAX_RETAINED_TURNS = 400;
+    let effectiveHistory: Array<{ role: string; content: string }> = [];
+    let shouldPersist = false;
+    if (history && Array.isArray(history) && history.length > 0) {
+      // Frontend supplied explicit history — respect it, don't persist.
+      effectiveHistory = history;
+    } else {
+      shouldPersist = true;
+      try {
+        const histStore = getStore({ name: "sam-chat-history", consistency: "strong" });
+        const stored = await histStore.get("turns", { type: "json" }) as Array<{ role: string; content: string; at?: string; model?: string }> | null;
+        if (Array.isArray(stored) && stored.length > 0) {
+          // Take last N turns, strip the timestamp/model metadata before sending to model
+          effectiveHistory = stored.slice(-HISTORY_INJECT_TURNS).map((t) => ({ role: t.role, content: t.content }));
+        }
+      } catch {
+        // History load failure is not fatal — proceed with empty history
+      }
     }
 
     // ── FETCH PERMANENT INSTRUCTIONS (injected into every call) ──
@@ -80,8 +133,8 @@ export default async (req: Request, context: Context) => {
       }
 
       const messages = [];
-      if (history && Array.isArray(history)) {
-        history.forEach((h: { role: string; content: string }) => {
+      if (effectiveHistory && effectiveHistory.length > 0) {
+        effectiveHistory.forEach((h: { role: string; content: string }) => {
           messages.push({ role: h.role, content: h.content });
         });
       }
@@ -126,6 +179,7 @@ export default async (req: Request, context: Context) => {
           )
           .join("") || data.error?.message || "No response from Claude.";
 
+      if (shouldPersist) await persistTurn(prompt, reply, "claude");
       return new Response(JSON.stringify({ reply, model: "claude" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -144,8 +198,8 @@ export default async (req: Request, context: Context) => {
       const messages: Array<{ role: string; content: string }> = [
         { role: "system", content: SYSTEM_PROMPT },
       ];
-      if (history && Array.isArray(history)) {
-        history.forEach((h: { role: string; content: string }) => {
+      if (effectiveHistory && effectiveHistory.length > 0) {
+        effectiveHistory.forEach((h: { role: string; content: string }) => {
           messages.push({ role: h.role, content: h.content });
         });
       }
@@ -185,6 +239,7 @@ export default async (req: Request, context: Context) => {
         data.error?.message ||
         "No response from OpenAI.";
 
+      if (shouldPersist) await persistTurn(prompt, reply, "openai");
       return new Response(JSON.stringify({ reply, model: "openai" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -201,8 +256,8 @@ export default async (req: Request, context: Context) => {
       }
 
       const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
-      if (history && Array.isArray(history)) {
-        history.forEach((h: { role: string; content: string }) => {
+      if (effectiveHistory && effectiveHistory.length > 0) {
+        effectiveHistory.forEach((h: { role: string; content: string }) => {
           contents.push({
             role: h.role === "assistant" ? "model" : "user",
             parts: [{ text: h.content }],
@@ -250,6 +305,7 @@ export default async (req: Request, context: Context) => {
         data.error?.message ||
         "No response from Gemini.";
 
+      if (shouldPersist) await persistTurn(prompt, reply, "gemini");
       return new Response(JSON.stringify({ reply, model: "gemini" }), {
         headers: { "Content-Type": "application/json" },
       });
