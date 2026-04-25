@@ -15,15 +15,43 @@ import { simpleParser } from "mailparser";
  *   YAHOO_APP_PASSWORD (Yahoo App Password — NOT your login password)
  */
 
-// Module-level cache — survives across invocations within the same warm Lambda instance.
-// Yahoo IMAP has high fixed latency per connection (~500-1000ms TLS + auth), so even
-// short TTLs dramatically improve perceived speed when the user refreshes or navigates
-// back to the email tab within a minute.
+// Two-tier cache strategy.
+//   L1 (in-memory Maps below): instant within the same warm Lambda container.
+//                                Dies on cold start. Per-container, not shared.
+//   L2 (Netlify Blob 'sam-yahoo-cache'): survives cold starts; shared across instances.
+//                                Adds ~30-50ms per get vs L1, but saves 5-8s vs IMAP.
+//
+// Read path: L1 (<1ms hit) → L2 blob (~30ms hit) → live IMAP (~5-8s miss).
+// Write path: write through to both L1 and L2.
 type CacheEntry = { timestamp: number; data: any };
 const LIST_TTL_MS = 30000;   // 30s for list views
 const BODY_TTL_MS = 300000;  // 5min for single-message bodies (bodies never change)
 const listCache: Map<string, CacheEntry> = new Map();
 const bodyCache: Map<string, CacheEntry> = new Map();
+
+// L2 blob cache helpers — write-through, async, never block the user request.
+// Keys are namespaced "list:" and "body:" to share one blob store.
+async function l2Get(key: string, ttl: number): Promise<any | null> {
+  try {
+    const { getStore } = await import("@netlify/blobs");
+    const store = getStore({ name: "sam-yahoo-cache", consistency: "strong" });
+    const raw = await store.get(key, { type: "json" }) as CacheEntry | null;
+    if (!raw) return null;
+    if (Date.now() - raw.timestamp > ttl) return null;
+    return raw.data;
+  } catch {
+    return null; // blob errors must not break the user path
+  }
+}
+async function l2Set(key: string, data: any): Promise<void> {
+  try {
+    const { getStore } = await import("@netlify/blobs");
+    const store = getStore({ name: "sam-yahoo-cache", consistency: "strong" });
+    await store.setJSON(key, { timestamp: Date.now(), data });
+  } catch {
+    // best-effort — don't block on cache writes
+  }
+}
 
 function getCached(cache: Map<string, CacheEntry>, key: string, ttl: number): any | null {
   const entry = cache.get(key);
@@ -44,6 +72,8 @@ function setCached(cache: Map<string, CacheEntry>, key: string, data: any): void
 }
 function invalidateListCache(): void {
   listCache.clear();
+  // L2 list entries naturally expire on TTL — explicit invalidation skipped
+  // since blob list+delete would add latency to mutations.
 }
 
 function folderMap_static(folder: string): string {
@@ -118,7 +148,15 @@ export default async (req: Request, context: Context) => {
       // CACHE CHECK — short-circuit before opening IMAP connection (saves 500-1000ms TLS handshake + auth)
       if (msgId) {
         const cacheKey = `body:${msgId}`;
-        const cached = getCached(bodyCache, cacheKey, BODY_TTL_MS);
+        let cached = getCached(bodyCache, cacheKey, BODY_TTL_MS);
+        // L1 miss → try L2 persistent blob (survives cold start)
+        if (!cached) {
+          const l2 = await l2Get(cacheKey, BODY_TTL_MS);
+          if (l2) {
+            cached = l2;
+            setCached(bodyCache, cacheKey, cached); // promote into L1
+          }
+        }
         if (cached) {
           // If not a prefetch and still unread, mark-as-read on the server BEFORE returning.
           // Previously this was fire-and-forget via IIFE, but serverless kills the Lambda
@@ -142,7 +180,16 @@ export default async (req: Request, context: Context) => {
         }
       } else {
         const cacheKey = `list:${folder}:${top}:${offset}`;
-        const cached = getCached(listCache, cacheKey, LIST_TTL_MS);
+        let cached = getCached(listCache, cacheKey, LIST_TTL_MS);
+        // L1 miss → try L2 persistent blob
+        if (!cached) {
+          const l2 = await l2Get(cacheKey, LIST_TTL_MS);
+          if (l2) {
+            cached = l2;
+            setCached(listCache, cacheKey, cached); // promote into L1
+            return new Response(JSON.stringify(cached), { headers: { ...headers, "X-Cache": "l2-hit" } });
+          }
+        }
         if (cached) {
           return new Response(JSON.stringify(cached), { headers: { ...headers, "X-Cache": "hit" } });
         }
@@ -225,8 +272,9 @@ export default async (req: Request, context: Context) => {
 
           lock.release();
           await client.logout();
-          // Write body to cache
+          // Write body to cache (L1 sync, L2 fire-and-forget)
           setCached(bodyCache, `body:${String(uid)}`, result);
+          l2Set(`body:${String(uid)}`, result).catch(() => {});
           // If we marked as read, invalidate list cache (isRead count changed)
           if (!isPrefetch) invalidateListCache();
           return new Response(JSON.stringify(result), { headers: { ...headers, "X-Cache": "miss" } });
@@ -282,6 +330,7 @@ export default async (req: Request, context: Context) => {
         const hasMore = (offset + messages.length) < total;
         const listResult = { value: messages, total, offset, hasMore };
         setCached(listCache, `list:${folder}:${top}:${offset}`, listResult);
+        l2Set(`list:${folder}:${top}:${offset}`, listResult).catch(() => {});
         return new Response(JSON.stringify(listResult), { headers: { ...headers, "X-Cache": "miss" } });
       } catch (err) {
         lock.release();
