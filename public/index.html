@@ -445,6 +445,16 @@ function samSignOut(){
       <div class="eld" style="padding:8px 0;font-size:12px;">Loading cron status...</div>
     </div>
   </div>
+  <!-- CREDENTIAL HEALTH — proves every external service still authenticates -->
+  <div class="card" id="cred-health-card" style="margin-top:0;padding:10px 14px;">
+    <div class="ch" style="margin-bottom:6px;">
+      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🔐 Credentials<span id="cred-health-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+      <span class="badge" style="cursor:pointer" onclick="loadCredHealth(true)">REFRESH</span>
+    </div>
+    <div id="cred-health-rows" style="display:flex;flex-direction:column;gap:4px;">
+      <div class="eld" style="padding:8px 0;font-size:12px;">Loading credential status...</div>
+    </div>
+  </div>
   <!-- SAM DIALOGUE BOX -->
   <div class="card" style="margin-top:0;">
     <div class="ch">
@@ -1190,7 +1200,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();loadCredHealth();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1771,6 +1781,50 @@ function renderUnifiedItem(m){
       '<div style="font-size:11px;color:var(--text-muted);line-height:1.5;">'+preview+(preview.length>=140?'…':'')+'</div>'+
     '</div>'+
   '</div>';
+}
+
+// ── CREDENTIAL HEALTH — pings every external API to confirm key still works ──
+let credHealthState={loaded:false,loading:false,lastLoad:0};
+async function loadCredHealth(forceRefresh){
+  if(credHealthState.loading)return;
+  // Credential checks are slow + cost real API calls — cache 90s
+  if(credHealthState.loaded&&!forceRefresh&&Date.now()-credHealthState.lastLoad<90000)return;
+  credHealthState.loading=true;
+  const rows=document.getElementById('cred-health-rows');
+  if(!credHealthState.loaded)rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">Pinging every API... ~3s</div>';
+  try{
+    const r=await fetch('/api/credentials/health?cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    credHealthState.loaded=true;credHealthState.lastLoad=Date.now();
+    renderCredHealth(d);
+  }catch(e){
+    rows.innerHTML='<div class="eld" style="padding:8px 0;color:var(--red);font-size:12px;">Credential health failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{credHealthState.loading=false;}
+}
+function renderCredHealth(d){
+  const creds=Array.isArray(d.credentials)?d.credentials:[];
+  const summary=d.summary||{};
+  const meta=document.getElementById('cred-health-meta');
+  const overallColor=summary.overall==='alarm'?'var(--red)':summary.overall==='warning'?'#EF9F27':'var(--green)';
+  meta.innerHTML='· <span style="color:'+overallColor+';font-weight:600;">'+(summary.overall||'?').toUpperCase()+'</span> · '+(summary.ok||0)+'/'+(summary.total||0)+' ok';
+  const rows=document.getElementById('cred-health-rows');
+  if(creds.length===0){rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">No credentials checked.</div>';return;}
+  rows.innerHTML=creds.map(c=>{
+    const color=c.status==='alarm'?'#E24B4A':c.status==='warning'?'#EF9F27':c.status==='ok'?'#1D9E75':'var(--text-muted)';
+    const dotChar=c.status==='alarm'?'●':c.status==='warning'?'◐':c.status==='ok'?'●':'○';
+    const latency=c.checkLatencyMs?Math.round(c.checkLatencyMs)+'ms':'';
+    const expiryBadge=(typeof c.daysUntilExpiry==='number')?
+      '<span style="background:'+(c.daysUntilExpiry<=7?'rgba(226,75,74,0.15)':c.daysUntilExpiry<=30?'rgba(239,159,39,0.15)':'rgba(29,158,117,0.10)')+';color:'+(c.daysUntilExpiry<=7?'#E24B4A':c.daysUntilExpiry<=30?'#EF9F27':'#1D9E75')+';padding:1px 7px;border-radius:8px;font-size:9px;font-weight:600;font-family:var(--mono);">'+c.daysUntilExpiry+'d</span>'
+      :'';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02);" title="'+esc(c.reason||'')+'">'+
+      '<span style="color:'+color+';font-size:13px;flex-shrink:0;">'+dotChar+'</span>'+
+      '<span style="font-size:12px;color:var(--text);min-width:140px;font-weight:500;">'+esc(c.label||c.service)+'</span>'+
+      expiryBadge+
+      '<div style="flex:1;"></div>'+
+      '<span style="font-size:10px;color:var(--text-muted);font-family:var(--mono);">'+latency+'</span>'+
+    '</div>';
+  }).join('');
 }
 
 // ── CRON HEALTH — dashboard widget for the 7 scheduled jobs ──
@@ -6004,6 +6058,7 @@ loadTasks();
 // Load SAM Status card on init — populates dashboard roll-up before user scrolls
 loadSamStatus();
 loadCronHealth();
+loadCredHealth();
 
 // ── PREFETCH WARMUP ──
 // On dashboard load, fire small parallel requests against the read-cacheable endpoints.
