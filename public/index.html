@@ -328,6 +328,7 @@ function samSignOut(){
     <div class="ns">Command Center</div>
     <div class="ni active" onclick="go('dash',this)"><span class="nic">📊</span><span>Dashboard</span></div>
     <div class="ni" onclick="go('email',this)"><span class="nic">📧</span><span>Email</span><span class="nib" id="ebadge" style="display:none"></span></div>
+    <div class="ni" onclick="go('unified',this)"><span class="nic">📬</span><span>Unified</span><span class="nib" id="unbadge" style="display:none"></span></div>
     <div class="ni" onclick="go('triage',this)"><span class="nic">📥</span><span>Triage</span><span class="nib" id="trbadge" style="display:none"></span></div>
     <div class="ni" onclick="go('conflicts',this)"><span class="nic">⚠️</span><span>Conflicts</span><span class="nib" id="cfbadge" style="display:none"></span></div>
     <div class="ni" onclick="go('calendar',this)"><span class="nic">📅</span><span>Calendar</span></div>
@@ -504,6 +505,18 @@ function samSignOut(){
         <div id="er-body" style="font-size:13px;line-height:1.7;color:var(--text-dim);flex:1;overflow-y:auto;"></div>
       </div>
     </div>
+  </div>
+</div>
+<div id="p-unified" class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+    <h1 style="font-size:20px;margin:0;">📬 Unified Inbox</h1>
+    <span id="unified-meta" style="font-size:11px;color:var(--text-muted);font-family:var(--mono);"></span>
+    <div style="flex:1;"></div>
+    <button onclick="loadUnified(true)" id="unified-refresh-btn" style="padding:5px 12px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">↻ Refresh</button>
+  </div>
+  <div id="unified-filters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;"></div>
+  <div id="unified-list" style="display:flex;flex-direction:column;gap:6px;">
+    <div class="eld">Loading unified inbox...</div>
   </div>
 </div>
 <div id="p-triage" class="page">
@@ -1100,7 +1113,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='dash')loadSamStatus();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='unified')loadUnified();if(id==='dash')loadSamStatus();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1572,6 +1585,95 @@ async function runTriageNow(btn){
     clearTimeout(killTimer);
     btn.textContent=orig;btn.disabled=false;
   }
+}
+
+// ── UNIFIED INBOX — merged 3-account view sorted by urgency ──
+let unifiedState={messages:[],counts:{},filter:'all',loaded:false,loading:false};
+async function loadUnified(forceRefresh){
+  if(unifiedState.loading)return;
+  if(unifiedState.loaded&&!forceRefresh)return;
+  unifiedState.loading=true;
+  const list=document.getElementById('unified-list');
+  if(!unifiedState.loaded)list.innerHTML='<div class="eld">Loading unified inbox...</div>';
+  try{
+    const r=await fetch('/api/unified-inbox?cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    unifiedState.messages=Array.isArray(d.messages)?d.messages:[];
+    unifiedState.counts=d.perAccount||{};
+    unifiedState.bucketCounts=d.counts||{};
+    unifiedState.durationMs=d.durationMs||0;
+    unifiedState.loaded=true;
+    renderUnified();
+  }catch(e){
+    list.innerHTML='<div class="eld" style="color:var(--red);">Unified inbox load failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{unifiedState.loading=false;}
+}
+function renderUnified(){
+  const all=unifiedState.messages;
+  document.getElementById('unified-meta').textContent=all.length+' messages · '+(unifiedState.durationMs?Math.round(unifiedState.durationMs/100)/10+'s':'')+' · loaded '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  // Update sidebar badge with urgent count
+  const badge=document.getElementById('unbadge');
+  const urgent=all.filter(m=>m.bucket==='respond_today'||m.bucket==='respond_this_week').length;
+  if(urgent>0){badge.textContent=urgent;badge.style.display='inline-block';badge.style.background='var(--red)';}else{badge.style.display='none';}
+  // Render filter pills
+  const acctCounts=unifiedState.counts;
+  const filters=[
+    {key:'all',label:'All',icon:'📬',count:all.length,color:'var(--accent)'},
+    {key:'urgent',label:'Urgent',icon:'🔥',count:urgent,color:'#E24B4A'},
+    {key:'unread',label:'Unread',icon:'●',count:all.filter(m=>!m.isRead).length,color:'var(--accent)'},
+    {key:'m365',label:'M365',icon:'📨',count:acctCounts.m365||0,color:'#0078d4'},
+    {key:'gmail',label:'Gmail',icon:'📧',count:acctCounts.gmail||0,color:'#ea4335'},
+    {key:'yahoo',label:'Yahoo',icon:'📬',count:acctCounts.yahoo||0,color:'#6001d2'},
+  ];
+  let pillHtml='';
+  for(const f of filters){
+    if(f.count===0&&f.key!=='all')continue;
+    const active=unifiedState.filter===f.key;
+    pillHtml+='<button onclick="setUnifiedFilter(\''+f.key+'\')" style="padding:5px 12px;border-radius:14px;background:'+(active?f.color:'var(--surface-2)')+';border:1px solid '+f.color+';color:'+(active?'#fff':'var(--text-dim)')+';font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">'+f.icon+' '+f.label+' · '+f.count+'</button>';
+  }
+  document.getElementById('unified-filters').innerHTML=pillHtml;
+  // Filter
+  let view=all.slice();
+  if(unifiedState.filter==='urgent')view=view.filter(m=>m.bucket==='respond_today'||m.bucket==='respond_this_week');
+  else if(unifiedState.filter==='unread')view=view.filter(m=>!m.isRead);
+  else if(unifiedState.filter==='m365'||unifiedState.filter==='gmail'||unifiedState.filter==='yahoo')view=view.filter(m=>m.account===unifiedState.filter);
+  // Sort: by urgencyRank ascending (1=highest), then by receivedAt desc
+  view.sort((a,b)=>{
+    const ua=a.urgencyRank||99;
+    const ub=b.urgencyRank||99;
+    if(ua!==ub)return ua-ub;
+    return new Date(b.receivedAt||0)-new Date(a.receivedAt||0);
+  });
+  const list=document.getElementById('unified-list');
+  if(view.length===0){list.innerHTML='<div class="eld">Nothing in this view. ✨</div>';return;}
+  list.innerHTML=view.map(renderUnifiedItem).join('');
+}
+function setUnifiedFilter(f){unifiedState.filter=f;renderUnified();}
+function renderUnifiedItem(m){
+  const acctIcon=m.account==='m365'?'📨':m.account==='gmail'?'📧':m.account==='yahoo'?'📬':'✉️';
+  const acctColor=m.account==='m365'?'#0078d4':m.account==='gmail'?'#ea4335':m.account==='yahoo'?'#6001d2':'var(--text-muted)';
+  const fromName=m.from?(m.from.name||m.from.address||'unknown'):'unknown';
+  const subject=esc(m.subject||'(no subject)');
+  const preview=esc((m.preview||'').slice(0,140));
+  const when=m.receivedAt?new Date(m.receivedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+  const bucketColor=m.bucket==='respond_today'?'#E24B4A':m.bucket==='respond_this_week'?'#EF9F27':m.bucket==='invoice_receipt'?'#1D9E75':m.bucket==='fyi'?'#378ADD':'var(--text-muted)';
+  const bucketLabel=m.bucket?m.bucket.replace(/_/g,' '):'';
+  const unreadDot=m.isRead?'':'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;"></span>';
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid '+acctColor+';border-radius:7px;padding:10px 12px;display:flex;align-items:flex-start;gap:10px;">'+
+    unreadDot+
+    '<span style="font-size:14px;flex-shrink:0;" title="'+m.account+'">'+acctIcon+'</span>'+
+    '<div style="flex:1;min-width:0;">'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">'+
+        '<span style="font-size:12px;font-weight:600;color:var(--text);">'+esc(fromName)+'</span>'+
+        (bucketLabel?'<span style="background:'+bucketColor+';color:#fff;padding:1px 7px;border-radius:9px;font-size:9px;font-weight:600;text-transform:uppercase;">'+bucketLabel+'</span>':'')+
+        '<div style="flex:1;"></div>'+
+        '<span style="color:var(--text-muted);font-size:10px;font-family:var(--mono);">'+when+'</span>'+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--text-dim);font-weight:500;margin-bottom:3px;line-height:1.35;">'+subject+'</div>'+
+      '<div style="font-size:11px;color:var(--text-muted);line-height:1.5;">'+preview+(preview.length>=140?'…':'')+'</div>'+
+    '</div>'+
+  '</div>';
 }
 
 // ── SAM STATUS CARD — dashboard roll-up of all queues, briefing, backup ──
