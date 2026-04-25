@@ -87,6 +87,7 @@ export default async (req: Request, context: Context) => {
     // ── READ MAIL ──
     if (path === "/mail" && req.method === "GET") {
       const top = url.searchParams.get("top") || "20";
+      const skip = parseInt(url.searchParams.get("skip") || "0");
       const folder = url.searchParams.get("folder") || "inbox";
       const msgId = url.searchParams.get("id");
 
@@ -117,8 +118,9 @@ export default async (req: Request, context: Context) => {
         });
       }
 
+      const skipParam = skip > 0 ? `&$skip=${skip}` : "";
       const resp = await fetch(
-        `${graphBase}/mailFolders/${folder}/messages?$top=${top}&$select=subject,from,receivedDateTime,isRead,bodyPreview&$orderby=receivedDateTime DESC`,
+        `${graphBase}/mailFolders/${folder}/messages?$top=${top}&$select=subject,from,receivedDateTime,isRead,bodyPreview&$orderby=receivedDateTime DESC${skipParam}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!resp.ok) {
@@ -128,7 +130,10 @@ export default async (req: Request, context: Context) => {
         });
       }
       const data = await resp.json();
-      return new Response(JSON.stringify(data), {
+      // Augment with pagination metadata so frontend knows whether to show "Load older"
+      const valueLen = Array.isArray(data.value) ? data.value.length : 0;
+      const hasMore = valueLen >= parseInt(top);
+      return new Response(JSON.stringify({ ...data, offset: skip, hasMore }), {
         headers: { "Content-Type": "application/json" },
       });
     }

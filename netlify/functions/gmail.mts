@@ -93,6 +93,7 @@ export default async (req: Request, context: Context) => {
       const msgId = url.searchParams.get("id");
       const folder = url.searchParams.get("folder") || "inbox";
       const top = url.searchParams.get("top") || "30";
+      const pageToken = url.searchParams.get("pageToken") || "";
 
       // Single message
       if (msgId) {
@@ -157,8 +158,9 @@ export default async (req: Request, context: Context) => {
       };
       const labelId = labelMap[folder] || 'INBOX';
       const fetchCount = Math.min(parseInt(top), 25);
+      const pageTokenParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
       const listResp = await fetch(
-        `${gmailBase}/messages?labelIds=${labelId}&maxResults=${fetchCount}`,
+        `${gmailBase}/messages?labelIds=${labelId}&maxResults=${fetchCount}${pageTokenParam}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!listResp.ok) {
@@ -213,7 +215,11 @@ export default async (req: Request, context: Context) => {
         messages.push(...batch.filter(m => m !== null));
       }
 
-      return new Response(JSON.stringify({ value: messages }), { headers });
+      return new Response(JSON.stringify({
+        value: messages,
+        nextPageToken: listData.nextPageToken || null,
+        hasMore: !!listData.nextPageToken,
+      }), { headers });
     }
 
     // ── MARK READ/UNREAD ──

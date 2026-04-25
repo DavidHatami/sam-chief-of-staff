@@ -112,6 +112,7 @@ export default async (req: Request, context: Context) => {
       const msgId = url.searchParams.get("id");
       const folder = url.searchParams.get("folder") || "inbox";
       const top = parseInt(url.searchParams.get("top") || "15");
+      const offset = Math.max(0, parseInt(url.searchParams.get("offset") || "0"));
       const isPrefetch = url.searchParams.get("prefetch") === "1";
 
       // CACHE CHECK — short-circuit before opening IMAP connection (saves 500-1000ms TLS handshake + auth)
@@ -140,7 +141,7 @@ export default async (req: Request, context: Context) => {
           return new Response(JSON.stringify(cached), { headers: { ...headers, "X-Cache": "hit" } });
         }
       } else {
-        const cacheKey = `list:${folder}:${top}`;
+        const cacheKey = `list:${folder}:${top}:${offset}`;
         const cached = getCached(listCache, cacheKey, LIST_TTL_MS);
         if (cached) {
           return new Response(JSON.stringify(cached), { headers: { ...headers, "X-Cache": "hit" } });
@@ -235,18 +236,21 @@ export default async (req: Request, context: Context) => {
         const messages: EmailMsg[] = [];
         let count = 0;
 
-        // Get message sequence range (latest N messages)
+        // Get message sequence range — latest N messages, skipping `offset` newer ones
         const status = await client.status(mailbox, { messages: true });
         const total = status.messages || 0;
-        if (total === 0) {
+        if (total === 0 || offset >= total) {
           lock.release();
           await client.logout();
-          return new Response(JSON.stringify({ value: [] }), { headers });
+          return new Response(JSON.stringify({ value: [], total, offset, hasMore: false }), { headers });
         }
-        const startSeq = Math.max(1, total - top + 1);
+        // For pagination: pull (total - offset - top + 1) through (total - offset)
+        const endSeq = total - offset;
+        const startSeq = Math.max(1, endSeq - top + 1);
+        const range = `${startSeq}:${endSeq}`;
 
         // Fetch in reverse order (newest first) — envelope+flags only, no body
-        for await (const msg of client.fetch(`${startSeq}:*`, {
+        for await (const msg of client.fetch(range, {
           uid: true,
           envelope: true,
           flags: true,
@@ -275,8 +279,9 @@ export default async (req: Request, context: Context) => {
 
         lock.release();
         await client.logout();
-        const listResult = { value: messages };
-        setCached(listCache, `list:${folder}:${top}`, listResult);
+        const hasMore = (offset + messages.length) < total;
+        const listResult = { value: messages, total, offset, hasMore };
+        setCached(listCache, `list:${folder}:${top}:${offset}`, listResult);
         return new Response(JSON.stringify(listResult), { headers: { ...headers, "X-Cache": "miss" } });
       } catch (err) {
         lock.release();
