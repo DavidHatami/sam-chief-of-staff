@@ -328,6 +328,7 @@ function samSignOut(){
     <div class="ns">Command Center</div>
     <div class="ni active" onclick="go('dash',this)"><span class="nic">📊</span><span>Dashboard</span></div>
     <div class="ni" onclick="go('email',this)"><span class="nic">📧</span><span>Email</span><span class="nib" id="ebadge" style="display:none"></span></div>
+    <div class="ni" onclick="go('triage',this)"><span class="nic">📥</span><span>Triage</span><span class="nib" id="trbadge" style="display:none"></span></div>
     <div class="ni" onclick="go('calendar',this)"><span class="nic">📅</span><span>Calendar</span></div>
     <div class="ni" onclick="go('tasks',this)"><span class="nic">✅</span><span>Tasks</span><span class="nib" id="tbadge" style="display:none"></span></div>
     <div class="ni" onclick="go('zoom',this)"><span class="nic">🎥</span><span>Zoom</span><span class="nib" id="zbadge" style="display:none"></span></div>
@@ -491,6 +492,20 @@ function samSignOut(){
         <div id="er-body" style="font-size:13px;line-height:1.7;color:var(--text-dim);flex:1;overflow-y:auto;"></div>
       </div>
     </div>
+  </div>
+</div>
+<div id="p-triage" class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+    <h1 style="font-size:20px;margin:0;">📥 Triage</h1>
+    <span id="triage-meta" style="font-size:11px;color:var(--text-muted);font-family:var(--mono);"></span>
+    <div style="flex:1;"></div>
+    <button onclick="loadTriage(true)" id="triage-refresh-btn" style="padding:5px 12px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">↻ Refresh</button>
+    <button onclick="runTriageNow(this)" id="triage-run-btn" title="Force a fresh triage run across all unread inbox messages (~30-60s)" style="padding:5px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(74,124,255,0.15),rgba(124,58,237,0.15));border:1px solid rgba(74,124,255,0.3);color:var(--accent);font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">⚡ Re-run Triage</button>
+  </div>
+  <div id="triage-pills" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;"></div>
+  <div id="triage-bulk" style="display:none;padding:8px 12px;background:rgba(239,159,39,0.08);border:1px solid rgba(239,159,39,0.2);border-radius:6px;margin-bottom:12px;font-size:11px;color:var(--text-dim);"></div>
+  <div id="triage-list" style="display:flex;flex-direction:column;gap:8px;">
+    <div class="eld">Loading triage queue...</div>
   </div>
 </div>
 <div id="p-calendar" class="page">
@@ -1048,7 +1063,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1374,6 +1389,151 @@ async function runBackupNow(){
     setTimeout(()=>{btn.textContent='🔒 Backup Now';btn.style.color='';btn.disabled=false;},3000);
   }
 }
+// ── PHASE 1.2 EMAIL TRIAGE — UI for the 172-item review queue ──
+const TRIAGE_BUCKETS={
+  respond_today:{label:'Respond today',icon:'🔥',priority:1,color:'#E24B4A'},
+  respond_this_week:{label:'This week',icon:'⏰',priority:2,color:'#EF9F27'},
+  invoice_receipt:{label:'Invoice/receipt',icon:'💵',priority:3,color:'#1D9E75'},
+  fyi:{label:'FYI',icon:'ℹ️',priority:4,color:'#378ADD'},
+  newsletter:{label:'Newsletter',icon:'📰',priority:5,color:'#888780'},
+  spam:{label:'Spam',icon:'🚫',priority:6,color:'#5F5E5A'}
+};
+let triageState={pending:[],filter:'all',loaded:false,loading:false};
+async function loadTriage(forceRefresh){
+  if(triageState.loading)return;
+  if(triageState.loaded&&!forceRefresh)return;
+  triageState.loading=true;
+  const list=document.getElementById('triage-list');
+  if(!triageState.loaded)list.innerHTML='<div class="eld">Loading triage queue...</div>';
+  try{
+    const r=await fetch('/api/triage/pending?cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    triageState.pending=Array.isArray(d.pending)?d.pending:[];
+    triageState.loaded=true;
+    renderTriage();
+  }catch(e){
+    list.innerHTML='<div class="eld" style="color:var(--red);">Triage load failed: '+((e.message||e)+'').replace(/</g,'&lt;')+'</div>';
+  }finally{triageState.loading=false;}
+}
+function renderTriage(){
+  const items=triageState.pending;
+  const meta=document.getElementById('triage-meta');
+  meta.textContent=items.length+' pending · loaded '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  const counts={};for(const it of items)counts[it.bucket]=(counts[it.bucket]||0)+1;
+  const trbadge=document.getElementById('trbadge');
+  const urgent=(counts['respond_today']||0)+(counts['respond_this_week']||0);
+  if(urgent>0){trbadge.textContent=urgent;trbadge.style.display='inline-block';trbadge.style.background='var(--red)';}else{trbadge.style.display='none';}
+  let pillHtml='<button onclick="setTriageFilter(\'all\')" class="tr-pill'+(triageState.filter==='all'?' active':'')+'" style="padding:5px 12px;border-radius:14px;background:'+(triageState.filter==='all'?'var(--accent)':'var(--surface-2)')+';border:1px solid '+(triageState.filter==='all'?'var(--accent)':'var(--border)')+';color:'+(triageState.filter==='all'?'#fff':'var(--text-dim)')+';font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">All · '+items.length+'</button>';
+  const orderedBuckets=Object.entries(TRIAGE_BUCKETS).sort((a,b)=>a[1].priority-b[1].priority);
+  for(const[key,m]of orderedBuckets){
+    const c=counts[key]||0;if(c===0)continue;
+    const active=triageState.filter===key;
+    pillHtml+='<button onclick="setTriageFilter(\''+key+'\')" class="tr-pill'+(active?' active':'')+'" style="padding:5px 12px;border-radius:14px;background:'+(active?m.color:'var(--surface-2)')+';border:1px solid '+m.color+';color:'+(active?'#fff':'var(--text-dim)')+';font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">'+m.icon+' '+m.label+' · '+c+'</button>';
+  }
+  document.getElementById('triage-pills').innerHTML=pillHtml;
+  const bulk=document.getElementById('triage-bulk');
+  if(triageState.filter!=='all'&&counts[triageState.filter]>1){
+    const m=TRIAGE_BUCKETS[triageState.filter];
+    bulk.style.display='flex';bulk.style.alignItems='center';bulk.style.gap='10px';
+    bulk.innerHTML='<span>'+(counts[triageState.filter])+' items in <strong>'+(m?m.label:triageState.filter)+'</strong></span><div style="flex:1;"></div>'+
+      '<button onclick="bulkTriageDismiss(\''+triageState.filter+'\')" style="padding:4px 10px;border-radius:5px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:var(--red);font-size:10px;font-weight:600;cursor:pointer;">✗ Dismiss all '+(m?m.label.toLowerCase():'')+'</button>';
+  }else{bulk.style.display='none';}
+  let view=items.slice();
+  if(triageState.filter!=='all')view=view.filter(it=>it.bucket===triageState.filter);
+  view.sort((a,b)=>{
+    const pa=(TRIAGE_BUCKETS[a.bucket]||{}).priority||99;
+    const pb=(TRIAGE_BUCKETS[b.bucket]||{}).priority||99;
+    if(pa!==pb)return pa-pb;
+    return new Date(b.receivedAt||0)-new Date(a.receivedAt||0);
+  });
+  const list=document.getElementById('triage-list');
+  if(view.length===0){list.innerHTML='<div class="eld">Nothing in this view. ✨</div>';return;}
+  list.innerHTML=view.map(renderTriageItem).join('');
+}
+function renderTriageItem(item){
+  const m=TRIAGE_BUCKETS[item.bucket]||{label:item.bucket,icon:'?',color:'var(--text-muted)'};
+  const escId=String(item.id||'').replace(/'/g,"\\'");
+  const subject=esc(item.subject||'(no subject)');
+  const fromDisplay=esc(item.from||item.fromEmail||'unknown');
+  const preview=esc((item.bodyPreview||'').slice(0,220));
+  const reasoning=esc(item.reasoning||'');
+  const draftReply=item.draftReply&&item.draftReply!=='None'&&item.draftReply.length>2?item.draftReply:'';
+  const acctIcon=item.account==='m365'?'📨':item.account==='gmail'?'📧':item.account==='yahoo'?'📬':'✉️';
+  const when=item.receivedAt?new Date(item.receivedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+  return '<div class="tr-card" data-id="'+escId+'" style="background:var(--surface);border:1px solid var(--border);border-left:3px solid '+m.color+';border-radius:8px;padding:12px 14px;">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">'+
+      '<span style="background:'+m.color+';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">'+m.icon+' '+m.label+'</span>'+
+      '<span style="color:var(--text-muted);font-size:11px;font-family:var(--mono);">'+acctIcon+' '+item.account+'</span>'+
+      '<span style="color:var(--text-muted);font-size:11px;font-family:var(--mono);">'+when+'</span>'+
+      '<div style="flex:1;"></div>'+
+      '<button onclick="approveTriage(\''+escId+'\',this)" style="padding:4px 10px;border-radius:5px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.35);color:var(--green);font-size:10px;font-weight:600;cursor:pointer;">✓ Approve</button>'+
+      '<button onclick="dismissTriage(\''+escId+'\',this)" style="padding:4px 10px;border-radius:5px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:var(--red);font-size:10px;font-weight:600;cursor:pointer;">✗ Dismiss</button>'+
+    '</div>'+
+    '<div style="font-size:13px;font-weight:600;color:var(--text);line-height:1.4;">'+subject+'</div>'+
+    '<div style="font-size:12px;color:var(--text-dim);margin-top:2px;">From: '+fromDisplay+'</div>'+
+    '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5;">'+preview+(preview.length>=220?'…':'')+'</div>'+
+    (reasoning?'<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:6px;padding-left:8px;border-left:2px solid var(--border);line-height:1.45;">SAM: '+reasoning+'</div>':'')+
+    (draftReply?'<details style="margin-top:8px;"><summary style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600;">📝 View draft reply</summary><div style="font-size:12px;color:var(--text-dim);white-space:pre-wrap;margin-top:6px;padding:10px 12px;background:var(--surface-2);border-radius:6px;border:1px solid var(--border);line-height:1.5;">'+esc(draftReply)+'</div></details>':'')+
+  '</div>';
+}
+function setTriageFilter(f){triageState.filter=f;renderTriage();}
+async function approveTriage(id,btn){
+  btn.disabled=true;btn.textContent='...';
+  try{
+    const r=await fetch('/api/triage/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
+    triageState.pending=triageState.pending.filter(x=>x.id!==id);
+    renderTriage();
+    showToast('Approved','ok');
+  }catch(e){btn.disabled=false;btn.textContent='✓ Approve';showToast('Approve failed: '+(e.message||e),'err');}
+}
+async function dismissTriage(id,btn){
+  btn.disabled=true;btn.textContent='...';
+  try{
+    const r=await fetch('/api/triage/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
+    triageState.pending=triageState.pending.filter(x=>x.id!==id);
+    renderTriage();
+    showToast('Dismissed','ok');
+  }catch(e){btn.disabled=false;btn.textContent='✗ Dismiss';showToast('Dismiss failed: '+(e.message||e),'err');}
+}
+async function bulkTriageDismiss(bucket){
+  const items=triageState.pending.filter(x=>x.bucket===bucket);
+  if(!items.length)return;
+  if(!confirm('Dismiss all '+items.length+' items in this bucket? This cannot be undone.'))return;
+  let ok=0,fail=0;
+  for(const it of items){
+    try{
+      const r=await fetch('/api/triage/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:it.id})});
+      if(r.ok)ok++;else fail++;
+    }catch{fail++;}
+  }
+  triageState.pending=triageState.pending.filter(x=>x.bucket!==bucket||!items.find(i=>i.id===x.id));
+  renderTriage();
+  showToast('Bulk dismiss: '+ok+' ok, '+fail+' failed',fail?'err':'ok');
+}
+async function runTriageNow(btn){
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳ Classifying...';
+  const ctrl=new AbortController();
+  const killTimer=setTimeout(()=>ctrl.abort(),60000);
+  try{
+    const r=await fetch('/api/triage/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({}),signal:ctrl.signal});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+    showToast('Triage complete · '+(d.classified||d.count||0)+' new emails classified','ok');
+    triageState.loaded=false;
+    await loadTriage(true);
+  }catch(e){
+    const msg=e&&e.name==='AbortError'?'Timed out after 60s':((e.message||e)+'');
+    showToast('Triage run failed: '+msg.slice(0,160),'err');
+  }finally{
+    clearTimeout(killTimer);
+    btn.textContent=orig;btn.disabled=false;
+  }
+}
+
 // ── PHASE 1.1 MORNING BRIEFING — manual trigger from dashboard ──
 // v2: client-side timeout via AbortController so the button never hangs
 // indefinitely if the function exceeds Netlify's 26s budget or the edge
