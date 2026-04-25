@@ -26,7 +26,8 @@ export type CronJobName =
   | "review-scheduled"
   | "triage-scheduled"
   | "yahoo-warmer"
-  | "zoom-check-background";
+  | "zoom-check-background"
+  | "memory-extract-scheduled";
 
 /**
  * Write a heartbeat entry for a scheduled job. Called at the end of each
@@ -130,6 +131,7 @@ export const CRON_EXPECTED_INTERVAL_MS: Record<CronJobName, number> = {
   "triage-scheduled":       20 * 60 * 1000,       // 20m
   "yahoo-warmer":            2 * 60 * 1000,       //  2m
   "zoom-check-background":  15 * 60 * 1000,       // 15m
+  "memory-extract-scheduled": 6 * 60 * 60 * 1000, // 6h (cron: 0 */6 * * *)
 };
 
 // ─────────────────────────────────────────────────────────────────────────

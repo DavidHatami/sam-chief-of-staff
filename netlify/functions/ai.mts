@@ -1,5 +1,7 @@
 import type { Context, Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { embedText, topKSimilar, type TurnEmbedding } from "../lib/embeddings.ts";
+import { knowledgeToContext, EMPTY_KNOWLEDGE, type Knowledge } from "../lib/memory-extract.ts";
 
 const BASE_PROMPT = `You are SAM (Secret Agent Man), Dr. David Hatami's personal AI Chief of Staff.
 
@@ -22,11 +24,27 @@ WHAT TO ACTUALLY DO
 - He hates being told to finish jobs that are your job. Don't suggest he "follow up" or "complete" tasks you should be doing.
 
 VOICE
-Direct. Opinionated. Slightly irreverent when the moment calls for it. He likes being treated as a peer, not a customer. Don't fawn. Don't apologize for being honest. If something is dumb, say it's dumb. If a plan won't work, say so and explain why.`;
+Direct. Opinionated. Slightly irreverent when the moment calls for it. He likes being treated as a peer, not a customer. Don't fawn. Don't apologize for being honest. If something is dumb, say it's dumb. If a plan won't work, say so and explain why.
+
+YOUR MEMORY
+You have actual memory across sessions. The system injects two things into every chat:
+  1. The most recent literal turns (what was just said) AND the most semantically relevant past turns (what's been said about THIS topic before).
+  2. Standing knowledge — durable facts you've extracted about David, the people in his life, his projects, his preferences, his decisions.
+
+When David references something from a past conversation, don't act surprised or ask him to remind you. You should know. If you don't know, say so plainly — don't fabricate. The standing knowledge section labels facts as "STANDING KNOWLEDGE"; treat those as ground truth about David's world. The retrieved past turns are labeled "RELEVANT PAST CONVERSATIONS" — use them like you'd use your own recall.
+
+If David tells you something new that contradicts what you "know," update your stance — say so explicitly ("Got it, I had X on file but you're saying Y now") rather than silently rewriting.`;
 
 // ── PERSIST CHAT TURN ──
 // Best-effort write — never throws, never blocks the response. Caps retained
 // turns at HISTORY_MAX_RETAINED_TURNS to prevent the blob from growing unbounded.
+//
+// Two writes per turn:
+//   1. sam-chat-history: turns array (literal user/assistant text + timestamp)
+//   2. sam-embeddings: vector array (only USER turns are embedded — at query time
+//      we look up the user turn that matches a similarity hit, then surface BOTH
+//      the user turn AND its assistant reply as context. Halves storage vs
+//      embedding both sides.)
 async function persistTurn(userPrompt: string, assistantReply: string, model: string) {
   try {
     const histStore = getStore({ name: "sam-chat-history", consistency: "strong" });
@@ -42,6 +60,29 @@ async function persistTurn(userPrompt: string, assistantReply: string, model: st
       ? turns.slice(turns.length - HISTORY_MAX_RETAINED_TURNS)
       : turns;
     await histStore.setJSON("turns", capped);
+
+    // Embedding write — best effort, runs after the persist so a failure here
+    // doesn't lose the chat content.
+    const openaiKey = Netlify.env.get("OPENAI_API_KEY");
+    if (openaiKey) {
+      const vector = await embedText(userPrompt, openaiKey);
+      if (vector) {
+        try {
+          const embStore = getStore({ name: "sam-embeddings", consistency: "strong" });
+          const storedVecs = (await embStore.get("vectors", { type: "json" })) as TurnEmbedding[] | null;
+          const vecs: TurnEmbedding[] = Array.isArray(storedVecs) ? storedVecs : [];
+          vecs.push({ at, embedding: vector });
+          // Keep embeddings aligned with turns retention — drop oldest when over cap
+          const cappedVecs = vecs.length > HISTORY_MAX_RETAINED_TURNS
+            ? vecs.slice(vecs.length - HISTORY_MAX_RETAINED_TURNS)
+            : vecs;
+          await embStore.setJSON("vectors", cappedVecs);
+        } catch {
+          // Embedding write failure is non-fatal — semantic recall just gets
+          // marginally less complete. Literal recall still works.
+        }
+      }
+    }
   } catch {
     // Persistence failure is not fatal. The reply already went out.
   }
@@ -74,25 +115,89 @@ export default async (req: Request, context: Context) => {
     // If the frontend explicitly passes `history` (e.g. for testing or one-off
     // prompts that shouldn't be persisted), we use that AND skip the persist
     // step. Otherwise: load from blob, use it, persist after.
-    const HISTORY_INJECT_TURNS = 25;
-    const HISTORY_MAX_RETAINED_TURNS = 400;
+    //
+    // We do TWO retrievals:
+    //   1. RECENT — last 10 turns verbatim, for short-term coherence
+    //   2. RELEVANT — top 3 semantically-similar past turns NOT in the recent
+    //      window, for "I asked about Patricia 2 months ago" recall
+    const RECENT_TURNS = 10;
+    const SEMANTIC_TOP_K = 3;
+    const SEMANTIC_MIN_SCORE = 0.35;
     let effectiveHistory: Array<{ role: string; content: string }> = [];
+    let semanticContext = "";
     let shouldPersist = false;
+
     if (history && Array.isArray(history) && history.length > 0) {
-      // Frontend supplied explicit history — respect it, don't persist.
+      // Frontend supplied explicit history — respect it, don't persist, no semantic search.
       effectiveHistory = history;
     } else {
       shouldPersist = true;
       try {
         const histStore = getStore({ name: "sam-chat-history", consistency: "strong" });
         const stored = await histStore.get("turns", { type: "json" }) as Array<{ role: string; content: string; at?: string; model?: string }> | null;
-        if (Array.isArray(stored) && stored.length > 0) {
-          // Take last N turns, strip the timestamp/model metadata before sending to model
-          effectiveHistory = stored.slice(-HISTORY_INJECT_TURNS).map((t) => ({ role: t.role, content: t.content }));
+        const allTurns = Array.isArray(stored) ? stored : [];
+
+        if (allTurns.length > 0) {
+          // 1. RECENT — last N turns verbatim
+          const recent = allTurns.slice(-RECENT_TURNS);
+          effectiveHistory = recent.map((t) => ({ role: t.role, content: t.content }));
+
+          // 2. SEMANTIC — find past turns relevant to current prompt that aren't in recent
+          const openaiKey = Netlify.env.get("OPENAI_API_KEY");
+          if (openaiKey && allTurns.length > RECENT_TURNS) {
+            try {
+              const queryVec = await embedText(prompt, openaiKey);
+              if (queryVec) {
+                const embStore = getStore({ name: "sam-embeddings", consistency: "strong" });
+                const storedVecs = (await embStore.get("vectors", { type: "json" })) as TurnEmbedding[] | null;
+                const corpus = Array.isArray(storedVecs) ? storedVecs : [];
+
+                // Exclude vectors whose timestamps fall in the recent window
+                const recentTimestamps = new Set(recent.filter((t) => t.role === "user").map((t) => t.at));
+                const olderCorpus = corpus.filter((v) => !recentTimestamps.has(v.at));
+
+                if (olderCorpus.length > 0) {
+                  const matches = topKSimilar(queryVec, olderCorpus, SEMANTIC_TOP_K, SEMANTIC_MIN_SCORE);
+                  if (matches.length > 0) {
+                    // For each match, find the user turn AND its assistant reply
+                    const matchedConversations: string[] = [];
+                    for (const m of matches) {
+                      const userIdx = allTurns.findIndex((t) => t.at === m.at && t.role === "user");
+                      if (userIdx === -1) continue;
+                      const userTurn = allTurns[userIdx];
+                      const assistantTurn = allTurns[userIdx + 1];
+                      if (!assistantTurn || assistantTurn.role !== "assistant") continue;
+                      const when = new Date(userTurn.at || "").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                      matchedConversations.push(
+                        `[${when}, similarity ${m.score.toFixed(2)}]\nDavid: ${userTurn.content}\nSAM: ${assistantTurn.content}`
+                      );
+                    }
+                    if (matchedConversations.length > 0) {
+                      semanticContext = `\n\n[RELEVANT PAST CONVERSATIONS — pulled from semantic memory because they relate to the current question]\n\n${matchedConversations.join("\n\n---\n\n")}`;
+                    }
+                  }
+                }
+              }
+            } catch {
+              // Semantic recall failure is non-fatal — literal recall still works
+            }
+          }
         }
       } catch {
         // History load failure is not fatal — proceed with empty history
       }
+    }
+
+    // ── LOAD STANDING KNOWLEDGE — durable facts extracted from past conversations ──
+    let standingContext = "";
+    try {
+      const knowStore = getStore({ name: "sam-knowledge", consistency: "strong" });
+      const know = (await knowStore.get("knowledge", { type: "json" })) as Knowledge | null;
+      if (know) {
+        standingContext = knowledgeToContext(know);
+      }
+    } catch {
+      // Knowledge load failure non-fatal
     }
 
     // ── FETCH PERMANENT INSTRUCTIONS (injected into every call) ──
@@ -121,6 +226,12 @@ export default async (req: Request, context: Context) => {
     } catch (e) {
       // Instructions fetch failed silently — proceed with base prompt
     }
+
+    // Inject standing knowledge first (durable facts), then semantic recall
+    // (relevant past conversations). Both go BEFORE the literal recent history
+    // because they're "background" — what SAM already knows about David's world.
+    if (standingContext) SYSTEM_PROMPT += standingContext;
+    if (semanticContext) SYSTEM_PROMPT += semanticContext;
 
     // ── CLAUDE (Anthropic) ──
     if (model === "claude") {

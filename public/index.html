@@ -465,6 +465,19 @@ function samSignOut(){
       <div class="eld" style="padding:8px 0;font-size:12px;">Loading last smoke test...</div>
     </div>
   </div>
+  <!-- SAM MEMORY — what SAM has learned about you, the people you mention, your projects, decisions -->
+  <div class="card" id="sam-memory-card" style="margin-top:0;padding:10px 14px;">
+    <div class="ch" style="margin-bottom:6px;">
+      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🧠 SAM Memory<span id="sam-memory-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+      <div style="display:flex;gap:6px;">
+        <span class="badge" style="cursor:pointer;font-size:9px;" onclick="distillSamMemory(this)" id="sam-distill-btn" title="Run extraction now over recent chat turns">DISTILL</span>
+        <span class="badge" style="cursor:pointer;font-size:9px;" onclick="loadSamMemory(true)">REFRESH</span>
+      </div>
+    </div>
+    <div id="sam-memory-rows" style="display:flex;flex-direction:column;gap:4px;">
+      <div class="eld" style="padding:8px 0;font-size:12px;">Loading memory...</div>
+    </div>
+  </div>
   <!-- SAM DIALOGUE BOX -->
   <div class="card" style="margin-top:0;">
     <div class="ch">
@@ -1210,7 +1223,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();loadCredHealth();loadSmokeTest();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();loadCredHealth();loadSmokeTest();loadSamMemory();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1791,6 +1804,104 @@ function renderUnifiedItem(m){
       '<div style="font-size:11px;color:var(--text-muted);line-height:1.5;">'+preview+(preview.length>=140?'…':'')+'</div>'+
     '</div>'+
   '</div>';
+}
+
+// ── SAM MEMORY — durable knowledge SAM has extracted from past conversations ──
+let samMemoryState={loaded:false,loading:false,distilling:false,lastLoad:0};
+async function loadSamMemory(forceRefresh){
+  if(samMemoryState.loading)return;
+  if(samMemoryState.loaded&&!forceRefresh&&Date.now()-samMemoryState.lastLoad<60000)return;
+  samMemoryState.loading=true;
+  const rows=document.getElementById('sam-memory-rows');
+  if(!samMemoryState.loaded)rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">Loading memory...</div>';
+  try{
+    const r=await fetch('/api/memory?cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    samMemoryState.loaded=true;samMemoryState.lastLoad=Date.now();
+    renderSamMemory(d);
+  }catch(e){
+    rows.innerHTML='<div class="eld" style="padding:8px 0;color:var(--red);font-size:12px;">Memory load failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{samMemoryState.loading=false;}
+}
+function renderSamMemory(k){
+  const meta=document.getElementById('sam-memory-meta');
+  const rows=document.getElementById('sam-memory-rows');
+  const peopleN=(k?.people||[]).length;
+  const projectsN=(k?.projects||[]).length;
+  const prefsN=(k?.preferences||[]).length;
+  const decsN=(k?.decisions||[]).length;
+  const total=peopleN+projectsN+prefsN+decsN;
+  meta.innerHTML='· '+total+' fact'+(total===1?'':'s')+(k?.totalExtractions?' · '+k.totalExtractions+' distillation'+(k.totalExtractions===1?'':'s'):'');
+  if(total===0){
+    rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">SAM hasn\'t extracted any standing facts yet. Click DISTILL to extract from recent chat history, or wait — it runs automatically every 6 hours.</div>';
+    return;
+  }
+  let html='';
+  if(peopleN>0){
+    html+='<div style="margin-bottom:8px;"><div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">👥 People ('+peopleN+')</div>';
+    k.people.slice(0,8).forEach(p=>{
+      const facts=(p.facts||[]).slice(0,3).join(' · ');
+      html+='<div style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);font-size:12px;margin-bottom:3px;"><b style="color:var(--text);">'+esc(p.name)+'</b> <span style="color:var(--text-muted);">'+esc(facts)+'</span></div>';
+    });
+    if(peopleN>8)html+='<div style="font-size:10px;color:var(--text-muted);padding:2px 8px;">+ '+(peopleN-8)+' more</div>';
+    html+='</div>';
+  }
+  if(projectsN>0){
+    html+='<div style="margin-bottom:8px;"><div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">📂 Projects ('+projectsN+')</div>';
+    k.projects.slice(0,6).forEach(p=>{
+      const facts=(p.facts||[]).slice(0,2).join(' · ');
+      const status=p.status?'<span style="font-size:10px;background:rgba(74,124,255,0.15);color:#4a7cff;padding:1px 6px;border-radius:8px;margin-left:6px;">'+esc(p.status)+'</span>':'';
+      html+='<div style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);font-size:12px;margin-bottom:3px;"><b style="color:var(--text);">'+esc(p.name)+'</b>'+status+' <span style="color:var(--text-muted);">'+esc(facts)+'</span></div>';
+    });
+    html+='</div>';
+  }
+  if(prefsN>0){
+    html+='<div style="margin-bottom:8px;"><div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">⚙️ Preferences ('+prefsN+')</div>';
+    k.preferences.slice(-6).forEach(p=>{
+      html+='<div style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);font-size:12px;margin-bottom:3px;color:var(--text-dim);">'+esc(p.text)+'</div>';
+    });
+    html+='</div>';
+  }
+  if(decsN>0){
+    html+='<div style="margin-bottom:4px;"><div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">✅ Decisions ('+decsN+')</div>';
+    k.decisions.slice(-5).forEach(d=>{
+      const ctx=d.context?'<span style="color:var(--text-muted);font-size:10px;"> — '+esc(d.context)+'</span>':'';
+      html+='<div style="padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);font-size:12px;margin-bottom:3px;color:var(--text-dim);">'+esc(d.text)+ctx+'</div>';
+    });
+    html+='</div>';
+  }
+  rows.innerHTML=html;
+}
+async function distillSamMemory(btn){
+  if(samMemoryState.distilling)return;
+  samMemoryState.distilling=true;
+  const orig=btn.textContent;
+  btn.textContent='DISTILLING...';
+  btn.style.opacity='0.6';
+  try{
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),30000);
+    const r=await fetch('/api/memory/extract',{method:'POST',signal:ctrl.signal});
+    clearTimeout(timer);
+    const d=await r.json();
+    if(d.ok){
+      const before=d.beforeCounts||{},after=d.afterCounts||{};
+      const delta=(after.people-before.people)+(after.projects-before.projects)+(after.preferences-before.preferences)+(after.decisions-before.decisions);
+      if(typeof showToast==='function')showToast('Memory distilled · '+(d.turnsExtractedFrom||0)+' turns scanned · '+(delta>=0?'+':'')+delta+' new facts','ok');
+      // Refresh display
+      samMemoryState.lastLoad=0;
+      await loadSamMemory(true);
+    }else{
+      if(typeof showToast==='function')showToast('Distill failed: '+(d.error||'unknown'),'err');
+    }
+  }catch(e){
+    if(typeof showToast==='function')showToast('Distill failed: '+(e.message||e).slice(0,160),'err');
+  }finally{
+    btn.textContent=orig;
+    btn.style.opacity='1';
+    samMemoryState.distilling=false;
+  }
 }
 
 // ── SMOKE TEST — display last E2E result, allow manual run ──
@@ -6204,6 +6315,7 @@ loadCronHealth();
 loadCredHealth();
 loadSmokeTest();
 loadSamHistory();
+loadSamMemory();
 
 // ── PREFETCH WARMUP ──
 // On dashboard load, fire small parallel requests against the read-cacheable endpoints.
