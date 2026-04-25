@@ -95,8 +95,10 @@ export default async (req: Request, context: Context) => {
       pullFolder(client, "INBOX", INBOX_TOP),
       pullFolder(client, "Sent", SENT_TOP),
     ]);
-    await client.logout();
 
+    // Write snapshot FIRST. A logout failure after this point cannot lose
+    // successfully-fetched data — previously, a transient TLS hiccup during
+    // logout would discard a perfectly good fetch.
     const store = getStore({ name: "sam-yahoo-cache", consistency: "strong" });
     const snapshot = {
       inbox,
@@ -105,6 +107,11 @@ export default async (req: Request, context: Context) => {
       durationMs: Date.now() - started,
     };
     await store.setJSON("snapshot", snapshot);
+
+    // Logout is best-effort. We already have the data; a failed logout just
+    // means the IMAP socket gets reaped by the timeout. No user impact.
+    try { await client.logout(); } catch {}
+
     console.log(
       `[YAHOO-WARMER] ok inbox=${inbox.length} sent=${sent.length} ${Date.now() - started}ms`
     );
