@@ -337,6 +337,7 @@ function samSignOut(){
     <div class="ni" onclick="go('events',this)"><span class="nic">📆</span><span>Events</span></div>
     <div class="ni" onclick="go('projects',this)"><span class="nic">📁</span><span>Projects</span><span class="nib" id="pbadge" style="display:none"></span></div>
     <div class="ni" onclick="go('briefings',this)"><span class="nic">🌅</span><span>Briefings</span></div>
+    <div class="ni" onclick="go('reviews',this)"><span class="nic">📊</span><span>Reviews</span></div>
     <div class="ns">Tools</div>
     <div class="ni" onclick="go('ai',this)"><span class="nic">🧠</span><span>AI Workbench</span></div>
     <div class="ni" onclick="go('schedule',this)"><span class="nic">🔗</span><span>Scheduling</span></div>
@@ -867,6 +868,19 @@ function samSignOut(){
     <div class="eld">Loading briefing archive...</div>
   </div>
 </div>
+<div id="p-reviews" class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+    <h1 style="font-size:20px;margin:0;">📊 Weekly Reviews</h1>
+    <span id="reviews-meta" style="font-size:11px;color:var(--text-muted);font-family:var(--mono);"></span>
+    <div style="flex:1;"></div>
+    <button onclick="loadReviews(true)" id="reviews-refresh-btn" style="padding:5px 12px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">↻ Refresh</button>
+    <button onclick="runReviewNow(this)" title="Generate a fresh weekly review (~30s)" style="padding:5px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(124,58,237,0.18),rgba(74,124,255,0.18));border:1px solid rgba(124,58,237,0.35);color:#7c3aed;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">⚡ Generate Now</button>
+  </div>
+  <div id="reviews-pills" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;"></div>
+  <div id="reviews-content" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px 24px;min-height:300px;">
+    <div class="eld">Loading review archive...</div>
+  </div>
+</div>
 <div id="p-ai" class="page">
   <div class="hdr"><div><h1>AI Workbench</h1><p class="hdr-sub">Research and query across AI platforms — Claude, OpenAI, and more</p></div></div>
   <div class="ai-models">
@@ -1113,7 +1127,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='unified')loadUnified();if(id==='dash')loadSamStatus();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='unified')loadUnified();if(id==='dash')loadSamStatus();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1781,6 +1795,107 @@ function statusRow(icon,label,detail,goAction){
     '<span style="color:var(--text-dim);flex:1;line-height:1.4;">'+detail+'</span>'+
     '<span style="color:var(--text-muted);font-size:11px;flex-shrink:0;">→</span>'+
   '</div>';
+}
+
+// ── WEEKLY REVIEWS — browse archived Sunday reviews ──
+let reviewsState={dates:[],selectedDate:null,cache:{},loaded:false,loading:false};
+async function loadReviews(forceRefresh){
+  if(reviewsState.loading)return;
+  if(reviewsState.loaded&&!forceRefresh)return;
+  reviewsState.loading=true;
+  const content=document.getElementById('reviews-content');
+  if(!reviewsState.loaded)content.innerHTML='<div class="eld">Loading review archive...</div>';
+  try{
+    const r=await fetch('/api/review/history?cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    reviewsState.dates=Array.isArray(d.dates)?d.dates:[];
+    reviewsState.loaded=true;
+    if(forceRefresh)reviewsState.cache={};
+    renderReviewPills();
+    if(reviewsState.dates.length>0){
+      const target=reviewsState.dates.includes(reviewsState.selectedDate)?reviewsState.selectedDate:reviewsState.dates[0];
+      await selectReviewDate(target);
+    }else{
+      content.innerHTML='<div class="eld">No reviews archived yet. They auto-generate Sundays at 10 PM UTC, or click Generate Now.</div>';
+    }
+  }catch(e){
+    content.innerHTML='<div class="eld" style="color:var(--red);">Review archive load failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{reviewsState.loading=false;}
+}
+function renderReviewPills(){
+  const dates=reviewsState.dates;
+  document.getElementById('reviews-meta').textContent=dates.length+' archived · loaded '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  const html=dates.map(d=>{
+    const lbl='Wk ending '+new Date(d+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const active=reviewsState.selectedDate===d;
+    const escD=d.replace(/'/g,"\\'");
+    return '<button onclick="selectReviewDate(\''+escD+'\')" style="padding:6px 14px;border-radius:14px;background:'+(active?'#7c3aed':'var(--surface-2)')+';border:1px solid '+(active?'#7c3aed':'var(--border)')+';color:'+(active?'#fff':'var(--text-dim)')+';font-family:var(--mono);font-size:11px;font-weight:600;cursor:pointer;">'+lbl+'</button>';
+  }).join('');
+  document.getElementById('reviews-pills').innerHTML=html;
+}
+async function selectReviewDate(date){
+  reviewsState.selectedDate=date;
+  renderReviewPills();
+  const content=document.getElementById('reviews-content');
+  if(reviewsState.cache[date]){renderReviewContent(reviewsState.cache[date]);return;}
+  content.innerHTML='<div class="eld">Loading '+esc(date)+' review...</div>';
+  try{
+    const r=await fetch('/api/review/get?date='+encodeURIComponent(date)+'&cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    reviewsState.cache[date]=d;
+    renderReviewContent(d);
+  }catch(e){
+    content.innerHTML='<div class="eld" style="color:var(--red);">Failed to load '+esc(date)+': '+esc((e.message||e)+'')+'</div>';
+  }
+}
+function renderReviewContent(d){
+  const content=document.getElementById('reviews-content');
+  const body=mdToHtmlBriefing(d.review||'');
+  const gen=d.generatedAt?new Date(d.generatedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+  const label=d.weekLabel||d.weekKey||'';
+  const sources=d.sources;
+  let sourcesHtml='';
+  // Sources may be a string or an object — handle both
+  if(sources){
+    let parsed=sources;
+    if(typeof sources==='string'){
+      try{parsed=JSON.parse(sources);}catch{parsed={raw:sources};}
+    }
+    if(typeof parsed==='object'&&Object.keys(parsed).length){
+      sourcesHtml='<details style="margin-top:24px;border-top:1px solid var(--border);padding-top:14px;"><summary style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600;">📋 View source data fed to SAM</summary>';
+      for(const[name,text]of Object.entries(parsed)){
+        const t=String(text||'').slice(0,3000);
+        sourcesHtml+='<div style="margin-top:10px;"><div style="font-size:11px;color:var(--text);font-weight:600;margin-bottom:4px;">'+esc(name)+'</div><pre style="font-size:11px;color:var(--text-muted);background:var(--surface-2);padding:10px 12px;border-radius:6px;border:1px solid var(--border);white-space:pre-wrap;font-family:var(--mono);max-height:240px;overflow-y:auto;line-height:1.5;">'+esc(t)+(text&&text.length>3000?'\n…(truncated)':'')+'</pre></div>';
+      }
+      sourcesHtml+='</details>';
+    }
+  }
+  const labelHtml=label?'<div style="font-size:11px;color:var(--text-muted);font-family:var(--mono);margin-bottom:14px;">'+esc(label)+'</div>':'';
+  content.innerHTML=labelHtml+body+
+    '<div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);font-family:var(--mono);">Generated '+esc(gen)+'</div>'+
+    sourcesHtml;
+}
+async function runReviewNow(btn){
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳ Generating...';
+  const ctrl=new AbortController();
+  const killTimer=setTimeout(()=>ctrl.abort(),45000);
+  try{
+    const r=await fetch('/api/review/now',{method:'POST',signal:ctrl.signal});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+    showToast('Review generated','ok');
+    reviewsState.loaded=false;
+    await loadReviews(true);
+  }catch(e){
+    const msg=e&&e.name==='AbortError'?'Timed out after 45s':((e.message||e)+'');
+    showToast('Generate failed: '+msg.slice(0,160),'err');
+  }finally{
+    clearTimeout(killTimer);
+    btn.textContent=orig;btn.disabled=false;
+  }
 }
 
 // ── BRIEFING HISTORY — browse past archived briefings ──
