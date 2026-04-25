@@ -385,6 +385,16 @@ function samSignOut(){
       <div id="demails" style="max-height:44vh;min-height:280px;overflow-y:auto;"><div class="eld">Loading Outlook...</div></div>
     </div>
   </div>
+  <!-- SAM STATUS — at-a-glance roll-up of triage/conflicts/briefing/backup -->
+  <div class="card" id="sam-status-card" style="margin-top:0;padding:10px 14px;">
+    <div class="ch" style="margin-bottom:6px;">
+      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">📡 SAM Status<span id="status-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+      <span class="badge" style="cursor:pointer" onclick="loadSamStatus(true)">REFRESH</span>
+    </div>
+    <div id="sam-status-rows" style="display:flex;flex-direction:column;gap:4px;">
+      <div class="eld" style="padding:8px 0;font-size:12px;">Loading status...</div>
+    </div>
+  </div>
   <!-- SAM DIALOGUE BOX -->
   <div class="card" style="margin-top:0;">
     <div class="ch">
@@ -1090,7 +1100,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='dash')loadSamStatus();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1559,6 +1569,93 @@ async function runTriageNow(btn){
     clearTimeout(killTimer);
     btn.textContent=orig;btn.disabled=false;
   }
+}
+
+// ── SAM STATUS CARD — dashboard roll-up of all queues, briefing, backup ──
+let samStatusState={loaded:false,loading:false,lastLoad:0};
+async function loadSamStatus(forceRefresh){
+  if(samStatusState.loading)return;
+  // Avoid hammering — debounce 30s unless force
+  if(samStatusState.loaded&&!forceRefresh&&Date.now()-samStatusState.lastLoad<30000)return;
+  samStatusState.loading=true;
+  const rows=document.getElementById('sam-status-rows');
+  if(!rows)return; // dashboard not in DOM
+  if(!samStatusState.loaded)rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">Loading status...</div>';
+  try{
+    // Fire all four endpoints in parallel — none are slow individually but serial would compound
+    const cb='?cb='+Date.now();
+    const [triageR,conflictR,briefR,backupR]=await Promise.allSettled([
+      fetch('/api/triage/pending'+cb).then(r=>r.json()),
+      fetch('/api/conflicts/open'+cb).then(r=>r.json()),
+      fetch('/api/briefing/history'+cb).then(r=>r.json()),
+      fetch('/api/backup'+cb).then(r=>r.json()),
+    ]);
+    const triage=triageR.status==='fulfilled'?(triageR.value.pending||[]):[];
+    const conflicts=conflictR.status==='fulfilled'?(conflictR.value.conflicts||[]):[];
+    const briefDates=briefR.status==='fulfilled'?(briefR.value.dates||[]):[];
+    const backup=backupR.status==='fulfilled'?(backupR.value.lastBackup||null):null;
+    samStatusState.loaded=true;
+    samStatusState.lastLoad=Date.now();
+    renderSamStatus({triage,conflicts,briefDates,backup});
+  }catch(e){
+    rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;color:var(--red);">Status load failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{samStatusState.loading=false;}
+}
+function renderSamStatus(d){
+  const meta=document.getElementById('status-meta');
+  if(meta)meta.textContent='loaded '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  // Triage row
+  const respondToday=d.triage.filter(t=>t.bucket==='respond_today').length;
+  const respondWeek=d.triage.filter(t=>t.bucket==='respond_this_week').length;
+  const totalTriage=d.triage.length;
+  const triageColor=respondToday>0?'#E24B4A':respondWeek>0?'#EF9F27':'var(--text-muted)';
+  let triageMsg;
+  if(respondToday>0){triageMsg='<strong style="color:'+triageColor+';">'+respondToday+' need response today</strong>'+(respondWeek>0?' · '+respondWeek+' this week':'')+' · '+totalTriage+' pending total';}
+  else if(respondWeek>0){triageMsg='<strong style="color:'+triageColor+';">'+respondWeek+' need response this week</strong> · '+totalTriage+' pending total';}
+  else{triageMsg=totalTriage+' pending · nothing urgent';}
+  // Conflicts row
+  const cfCount=d.conflicts.length;
+  const cfColor=cfCount>0?'#EF9F27':'var(--text-muted)';
+  const cfMsg=cfCount===0?'No open conflicts ✨':'<strong style="color:'+cfColor+';">'+cfCount+' open</strong>'+(cfCount===1?' — needs attention':'');
+  // Briefing row
+  const today=new Date().toISOString().slice(0,10);
+  const briefHasToday=d.briefDates.includes(today);
+  const briefColor=briefHasToday?'#1D9E75':'var(--text-muted)';
+  const briefMsg=briefHasToday?'<strong style="color:'+briefColor+';">Today\'s briefing ready</strong> · '+d.briefDates.length+' archived':d.briefDates.length>0?'Last: '+d.briefDates[0]+' · '+d.briefDates.length+' archived':'No briefings yet';
+  // Backup row
+  let backupMsg='No backup recorded';
+  let backupColor='var(--red)';
+  if(d.backup&&d.backup.timestamp){
+    const ts=new Date(d.backup.timestamp);
+    const ageHr=(Date.now()-ts.getTime())/3600000;
+    const trigger=d.backup.trigger||'?';
+    const sizeKB=d.backup.sizeKB||'?';
+    if(ageHr<26){backupColor='#1D9E75';backupMsg='<strong style="color:'+backupColor+';">Fresh</strong> · '+sizeKB+'KB · '+trigger+' · '+(ageHr<1?Math.round(ageHr*60)+'m':Math.round(ageHr)+'h')+' ago';}
+    else if(ageHr<48){backupColor='#EF9F27';backupMsg='<strong style="color:'+backupColor+';">'+Math.round(ageHr)+'h old</strong> · '+sizeKB+'KB · '+trigger;}
+    else{backupColor='#E24B4A';backupMsg='<strong style="color:'+backupColor+';">'+Math.round(ageHr/24)+'d stale</strong> · last: '+d.backup.timestamp.slice(0,10)+' ('+trigger+')';}
+  }
+  const rows=document.getElementById('sam-status-rows');
+  rows.innerHTML=
+    statusRow('📥','Triage',triageMsg,"goTab('triage')")+
+    statusRow('⚠️','Conflicts',cfMsg,"goTab('conflicts')")+
+    statusRow('🌅','Briefing',briefMsg,"goTab('briefings')")+
+    statusRow('💾','Backup',backupMsg,"goTab('integrations')");
+}
+function goTab(id){
+  let nav=null;
+  document.querySelectorAll('.ni').forEach(el=>{
+    const oc=el.getAttribute('onclick')||'';
+    if(oc.indexOf("go('"+id+"'")===0)nav=el;
+  });
+  go(id,nav);
+}
+function statusRow(icon,label,detail,goAction){
+  return '<div onclick="'+goAction+'" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background 0.15s;font-size:12px;" onmouseover="this.style.background=\'var(--surface-2)\'" onmouseout="this.style.background=\'transparent\'">'+
+    '<span style="font-size:16px;flex-shrink:0;">'+icon+'</span>'+
+    '<span style="font-weight:600;color:var(--text);min-width:75px;flex-shrink:0;">'+label+'</span>'+
+    '<span style="color:var(--text-dim);flex:1;line-height:1.4;">'+detail+'</span>'+
+    '<span style="color:var(--text-muted);font-size:11px;flex-shrink:0;">→</span>'+
+  '</div>';
 }
 
 // ── BRIEFING HISTORY — browse past archived briefings ──
@@ -5305,6 +5402,16 @@ function updateDashboardTasks(){
 
 // Load tasks on init
 loadTasks();
+
+// Load SAM Status card on init — populates dashboard roll-up before user scrolls
+loadSamStatus();
+
+// Refresh status when user returns to tab (covers leaving SAM open all day)
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden&&samStatusState.loaded&&Date.now()-samStatusState.lastLoad>120000){
+    loadSamStatus();
+  }
+});
 
 // ── RESIZABLE SIDEBAR ──
 let sbDragging=false;
