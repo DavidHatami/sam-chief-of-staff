@@ -5932,6 +5932,30 @@ loadTasks();
 // Load SAM Status card on init — populates dashboard roll-up before user scrolls
 loadSamStatus();
 
+// ── PREFETCH WARMUP ──
+// On dashboard load, fire small parallel requests against the read-cacheable endpoints.
+// The Cache-Control headers from Phase A make these land in the browser cache, so
+// when the user clicks Triage / Conflicts / Briefings / Reviews / Unified for the first
+// time in this session, the data is already warm. No network round-trip.
+//
+// All requests are aborted at 5s — if the network is slow they shouldn't compete
+// with the user's actual interactions.
+setTimeout(function(){
+  const prefetchUrls=[
+    '/api/triage/pending',
+    '/api/conflicts/open',
+    '/api/briefing/history',
+    '/api/review/history',
+    '/api/unified-inbox',
+    '/api/transcripts/summaries',
+  ];
+  for(const u of prefetchUrls){
+    const ctrl=new AbortController();
+    setTimeout(()=>ctrl.abort(),5000);
+    fetch(u,{signal:ctrl.signal,priority:'low'}).catch(()=>{});
+  }
+},800); // Wait 800ms so it doesn't compete with the dashboard's own initial paint
+
 // Refresh status when user returns to tab (covers leaving SAM open all day)
 document.addEventListener('visibilitychange',function(){
   if(!document.hidden&&samStatusState.loaded&&Date.now()-samStatusState.lastLoad>120000){
