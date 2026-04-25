@@ -92,7 +92,7 @@ const CHECKS: { endpoint: string; validate: (json: any) => string | null }[] = [
   },
   {
     endpoint: "/api/gcal/events",
-    validate: (j) => Array.isArray(j?.events) || Array.isArray(j) ? null : `Events not array`,
+    validate: (j) => Array.isArray(j?.value) || Array.isArray(j?.events) || Array.isArray(j) ? null : `Events not array (got keys: ${Object.keys(j||{}).join(',')})`,
   },
   {
     endpoint: "/api/zoom/recordings",
@@ -117,7 +117,8 @@ async function runOne(endpoint: string, validate: (j: any) => string | null): Pr
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 25000);
-      const r = await fetch(`${SITE}${endpoint}?_smoke=${Date.now()}-${attempt}`, {
+      const sep = endpoint.includes("?") ? "&" : "?";
+      const r = await fetch(`${SITE}${endpoint}${sep}_smoke=${Date.now()}-${attempt}`, {
         signal: ctrl.signal,
         headers: { "User-Agent": "SAM-Smoke-Test" },
       });
