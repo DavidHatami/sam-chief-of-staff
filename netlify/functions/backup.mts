@@ -38,9 +38,8 @@ export default async (req: Request, context: Context) => {
     return new Response(JSON.stringify({ error: "No GITHUB_PAT env var" }), { status: 500, headers });
   }
 
-  const REPO_OWNER = "DavidHatami";
-  const REPO_NAME = "sam-ops";
-  const FILE_PATH = "backups/sam-data-backup.json";
+  // Note: backup destinations are inlined in pushToRepo() below.
+  // Was REPO_OWNER/REPO_NAME — removed when going dual-target.
 
   // Read all stores
   const backup: Record<string, any> = {
@@ -104,68 +103,92 @@ export default async (req: Request, context: Context) => {
   const backupJson = JSON.stringify(backup, null, 2);
   backup._meta.totalSizeKB = Math.round(backupJson.length / 1024);
 
-  // Push to GitHub
-  try {
-    let existingSHA: string | null = null;
+  // Helper: push to a single repo. Returns ok flag and either commit info or error.
+  async function pushToRepo(owner: string, repo: string, path: string): Promise<{ ok: boolean; sha?: string; htmlUrl?: string; error?: string }> {
     try {
-      const checkResp = await fetch(
-        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`,
-        { headers: { Authorization: `Bearer ${GITHUB_PAT}`, "User-Agent": "SAM-Backup" } }
+      let existingSHA: string | null = null;
+      try {
+        const checkResp = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
+          { headers: { Authorization: `Bearer ${GITHUB_PAT}`, "User-Agent": "SAM-Backup" } }
+        );
+        if (checkResp.ok) {
+          const checkData = await checkResp.json();
+          existingSHA = checkData.sha;
+        }
+      } catch {}
+
+      const now = new Date();
+      const dateStr = now.toISOString().split("T")[0];
+      const timeStr = now.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit" });
+      const commitBody: Record<string, any> = {
+        message: `[SAM BACKUP] ${dateStr} ${timeStr} ET — ${backup._meta.totalSizeKB} KB — Manual`,
+        content: Buffer.from(JSON.stringify(backup, null, 2)).toString("base64"),
+        committer: { name: "SAM Chief of Staff", email: "admin@edupolicy.ai" },
+      };
+      if (existingSHA) commitBody.sha = existingSHA;
+
+      const pushResp = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${GITHUB_PAT}`, "Content-Type": "application/json", "User-Agent": "SAM-Backup" },
+          body: JSON.stringify(commitBody),
+        }
       );
-      if (checkResp.ok) {
-        const checkData = await checkResp.json();
-        existingSHA = checkData.sha;
+      if (pushResp.ok) {
+        const data = await pushResp.json();
+        return { ok: true, sha: data.commit?.sha?.substring(0, 7), htmlUrl: data.content?.html_url };
       }
-    } catch (e) {}
+      const errText = await pushResp.text();
+      return { ok: false, error: `HTTP ${pushResp.status}: ${errText.substring(0, 200)}` };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
 
-    const now = new Date();
-    const dateStr = now.toISOString().split("T")[0];
-    const timeStr = now.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit" });
-
-    const commitBody: Record<string, any> = {
-      message: `[SAM BACKUP] ${dateStr} ${timeStr} ET — ${backup._meta.totalSizeKB} KB — Manual`,
-      content: Buffer.from(JSON.stringify(backup, null, 2)).toString("base64"),
-      committer: { name: "SAM Chief of Staff", email: "admin@edupolicy.ai" },
-    };
-    if (existingSHA) commitBody.sha = existingSHA;
-
-    const pushResp = await fetch(
-      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`,
-      {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${GITHUB_PAT}`, "Content-Type": "application/json", "User-Agent": "SAM-Backup" },
-        body: JSON.stringify(commitBody),
-      }
-    );
+  try {
+    // Push to BOTH repos in parallel — primary sam-ops + mirror SAM-ops1
+    const [primary, mirror] = await Promise.all([
+      pushToRepo("DavidHatami", "sam-ops", "backups/sam-data-backup.json"),
+      pushToRepo("DavidHatami", "SAM-ops1", "backups/sam-data-backup.json"),
+    ]);
 
     const elapsed = Date.now() - startTime;
 
-    if (pushResp.ok) {
-      const pushData = await pushResp.json();
+    if (primary.ok) {
       const statusInfo = {
-        timestamp: now.toISOString(),
-        commit: pushData.commit?.sha?.substring(0, 7),
+        timestamp: new Date().toISOString(),
+        commit: primary.sha,
+        mirrorCommit: mirror.sha || null,
+        mirrorOk: mirror.ok,
+        mirrorError: mirror.error || null,
         sizeKB: backup._meta.totalSizeKB,
         stores: backup._meta.stores.length,
         elapsed: elapsed + "ms",
         trigger: "manual",
       };
-
-      // Save status
       const statusStore = getStore({ name: "sam-backup-status", consistency: "strong" });
       await statusStore.set("last", JSON.stringify(statusInfo));
 
       return new Response(JSON.stringify({
         success: true,
-        commit: pushData.commit?.sha?.substring(0, 7),
-        url: pushData.content?.html_url,
+        commit: primary.sha,
+        mirrorCommit: mirror.sha || null,
+        mirrorOk: mirror.ok,
+        mirrorError: mirror.ok ? null : mirror.error,
+        url: primary.htmlUrl,
         sizeKB: backup._meta.totalSizeKB,
         storesBackedUp: backup._meta.stores.filter((s: any) => s.status === "ok").length,
         elapsed: elapsed + "ms",
       }), { headers });
     } else {
-      const errText = await pushResp.text();
-      return new Response(JSON.stringify({ error: "GitHub push failed: " + errText.substring(0, 200) }), { status: 500, headers });
+      // Primary failed — return error even if mirror succeeded (primary is canonical)
+      return new Response(JSON.stringify({
+        error: `Primary push to sam-ops failed: ${primary.error}`,
+        mirrorOk: mirror.ok,
+        mirrorCommit: mirror.sha || null,
+      }), { status: 500, headers });
     }
   } catch (e) {
     return new Response(JSON.stringify({ error: "Backup failed: " + String(e) }), { status: 500, headers });
