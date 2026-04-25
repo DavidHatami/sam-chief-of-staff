@@ -1522,6 +1522,7 @@ async function approveTriage(id,btn){
     if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
     triageState.pending=triageState.pending.filter(x=>x.id!==id);
     renderTriage();
+    samStatusState.loaded=false;
     showToast('Approved','ok');
   }catch(e){btn.disabled=false;btn.textContent='✓ Approve';showToast('Approve failed: '+(e.message||e),'err');}
 }
@@ -1532,6 +1533,7 @@ async function dismissTriage(id,btn){
     if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
     triageState.pending=triageState.pending.filter(x=>x.id!==id);
     renderTriage();
+    samStatusState.loaded=false;
     showToast('Dismissed','ok');
   }catch(e){btn.disabled=false;btn.textContent='✗ Dismiss';showToast('Dismiss failed: '+(e.message||e),'err');}
 }
@@ -1548,6 +1550,7 @@ async function bulkTriageDismiss(bucket){
   }
   triageState.pending=triageState.pending.filter(x=>x.bucket!==bucket||!items.find(i=>i.id===x.id));
   renderTriage();
+  samStatusState.loaded=false;
   showToast('Bulk dismiss: '+ok+' ok, '+fail+' failed',fail?'err':'ok');
 }
 async function runTriageNow(btn){
@@ -1848,10 +1851,17 @@ function renderConflictCard(c){
       loc+
     '</div>';
   }).join('');
-  const altsHtml=(c.proposedAlternatives||[]).map(alt=>{
+  const altsHtml=(c.proposedAlternatives||[]).filter(alt=>{
+    if(!alt||!alt.start)return false;
+    try{return new Date(alt.start).getTime()>Date.now()-3600000;}catch{return false;}
+  }).map(alt=>{
     const lbl=esc(alt.label||fmtConflictTime(alt.start));
     return '<div style="padding:6px 10px;background:rgba(74,124,255,0.08);border:1px solid rgba(74,124,255,0.2);border-radius:5px;font-size:11px;color:var(--text-dim);font-family:var(--mono);">↪ '+lbl+'</div>';
   }).join('');
+  const totalAlts=(c.proposedAlternatives||[]).length;
+  const futureAlts=altsHtml.split('<div').length-1;
+  const altsHeading=totalAlts>0&&futureAlts===0?
+    '<div style="margin-top:8px;font-size:11px;color:var(--text-muted);font-style:italic;">'+totalAlts+' suggested alternative slot'+(totalAlts===1?'':'s')+' — all in the past. Re-scan to get fresh suggestions.</div>':'';
   return '<div class="cf-card" style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:8px;padding:14px 16px;">'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'+
       '<span style="background:var(--amber);color:#fff;padding:2px 10px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;">⚠ '+esc(typeLabel)+'</span>'+
@@ -1862,6 +1872,7 @@ function renderConflictCard(c){
     '</div>'+
     '<div style="font-size:13px;color:var(--text);margin-bottom:10px;line-height:1.4;">'+detail+'</div>'+
     '<div style="margin-bottom:10px;">'+eventsHtml+'</div>'+
+    altsHeading+
     (altsHtml?'<details style="margin-top:6px;"><summary style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600;">📅 View suggested alternative slots</summary><div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">'+altsHtml+'</div></details>':'')+
   '</div>';
 }
@@ -1872,6 +1883,7 @@ async function resolveConflict(id,btn){
     if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
     conflictState.list=conflictState.list.filter(x=>x.id!==id);
     renderConflicts();
+    samStatusState.loaded=false;
     showToast('Marked resolved','ok');
   }catch(e){btn.disabled=false;btn.textContent='✓ Mark resolved';showToast('Resolve failed: '+(e.message||e),'err');}
 }
@@ -1882,6 +1894,7 @@ async function dismissConflict(id,btn){
     if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
     conflictState.list=conflictState.list.filter(x=>x.id!==id);
     renderConflicts();
+    samStatusState.loaded=false;
     showToast('Dismissed','ok');
   }catch(e){btn.disabled=false;btn.textContent='✗ Dismiss';showToast('Dismiss failed: '+(e.message||e),'err');}
 }
