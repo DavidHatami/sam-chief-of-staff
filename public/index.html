@@ -1814,21 +1814,24 @@ async function loadSmokeTest(forceRefresh){
 function renderSmokeTest(d){
   const rows=document.getElementById('smoke-test-rows');
   const meta=document.getElementById('smoke-test-meta');
-  if(!d||!d.summary){
+  // Response shape varies: fresh run wraps under .summary, cached read has top-level fields
+  const s=d?.summary||d||{};
+  const runAt=d?.runAt||s?.runAt||'';
+  const results=d?.results||s?.results||[];
+  if(!d||(!s.total&&!results.length)){
     meta.innerHTML='';
     rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">No smoke test has run yet. Click RUN NOW to validate every endpoint (~10s).</div>';
     return;
   }
-  const s=d.summary||{};
   const passed=s.passed||0,failed=s.failed||0,total=s.total||0;
-  const allGreen=failed===0;
+  const allGreen=failed===0&&total>0;
   const overallColor=allGreen?'var(--green)':'#E24B4A';
-  const when=d.runAt?formatRelativeTime(d.runAt):'?';
-  meta.innerHTML='· <span style="color:'+overallColor+';font-weight:600;">'+(allGreen?'PASS':'FAIL')+'</span> · '+passed+'/'+total+' · '+when;
+  const when=runAt?formatRelativeTime(runAt):'?';
+  meta.innerHTML='· <span style="color:'+overallColor+';font-weight:600;">'+(allGreen?'PASS':failed>0?'FAIL':'?')+'</span> · '+passed+'/'+total+' · '+when;
   if(allGreen){
-    rows.innerHTML='<div style="padding:6px 8px;border-radius:6px;background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.25);font-size:12px;color:var(--text-dim);"><span style="color:var(--green);font-weight:600;">✓ All '+total+' endpoints validated</span> · ran in '+(s.durationMs?Math.round(s.durationMs/100)/10+'s':'?')+(d.deployId?' · deploy '+esc(d.deployId.substring(0,8)):'')+'</div>';
+    rows.innerHTML='<div style="padding:6px 8px;border-radius:6px;background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.25);font-size:12px;color:var(--text-dim);"><span style="color:var(--green);font-weight:600;">✓ All '+total+' endpoints validated</span> · ran in '+(s.durationMs?Math.round(s.durationMs/100)/10+'s':'?')+(s.deployId?' · deploy '+esc(String(s.deployId).substring(0,8)):'')+'</div>';
   }else{
-    const fails=(d.results||[]).filter(r=>r.status==='fail');
+    const fails=results.filter(r=>r.status==='fail');
     rows.innerHTML='<div style="padding:6px 8px;border-radius:6px;background:rgba(226,75,74,0.08);border:1px solid rgba(226,75,74,0.25);font-size:12px;color:var(--text-dim);margin-bottom:6px;"><span style="color:var(--red);font-weight:600;">✗ '+failed+' of '+total+' endpoints failing</span></div>'+
       fails.map(f=>'<div style="padding:5px 8px;border-radius:6px;background:rgba(255,255,255,0.02);font-size:11px;font-family:var(--mono);color:var(--text-muted);"><span style="color:var(--red);">●</span> '+esc(f.endpoint)+' — '+esc(f.reason||'fail')+' (HTTP '+(f.httpCode||'?')+')</div>').join('');
   }
