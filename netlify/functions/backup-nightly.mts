@@ -162,6 +162,21 @@ export default async (req: Request) => {
       const pushData = await pushResp.json();
       const elapsed = Date.now() - startTime;
       console.log(`[BACKUP] SUCCESS — Pushed to sam-ops/${FILE_PATH} — commit: ${pushData.commit?.sha?.substring(0, 7)} — ${elapsed}ms`);
+
+      // Write status blob so GET /api/backup reflects scheduled runs (not just manual ones).
+      try {
+        const statusStore = getStore({ name: "sam-backup-status", consistency: "strong" });
+        await statusStore.set("last", JSON.stringify({
+          timestamp: new Date().toISOString(),
+          commit: pushData.commit?.sha?.substring(0, 7),
+          sizeKB: Math.round(backupSize / 1024),
+          stores: backup._meta.stores.length,
+          elapsed: elapsed + "ms",
+          trigger: "scheduled",
+        }));
+      } catch (statusErr) {
+        console.log(`[BACKUP] Status blob write failed (non-fatal): ${statusErr}`);
+      }
     } else {
       const errText = await pushResp.text();
       console.log(`[BACKUP] GITHUB ERROR: ${pushResp.status} — ${errText.substring(0, 200)}`);
