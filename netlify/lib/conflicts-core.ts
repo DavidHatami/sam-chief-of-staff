@@ -219,6 +219,36 @@ function proposeAlternatives(
   return suggestions;
 }
 
+/**
+ * If a previously-recorded conflict is still open AND all its proposedAlternatives
+ * are now in the past, regenerate them from the current calendar so the user
+ * sees fresh future-dated options on the next page load.
+ *
+ * No-op if the record is missing, already resolved/dismissed, or still has at
+ * least one future alternative.
+ */
+async function refreshAltsIfStale(
+  store: any,
+  conflictId: string,
+  targetEvent: CalEvent,
+  events: CalEvent[]
+): Promise<void> {
+  try {
+    const record = (await store.get(conflictId, { type: "json" })) as ConflictRecord | null;
+    if (!record) return;
+    if (record.status === "resolved" || record.status === "dismissed") return;
+    const cutoff = Date.now();
+    const hasFutureAlt = (record.proposedAlternatives || []).some((alt) => {
+      try { return new Date(alt.start).getTime() > cutoff; } catch { return false; }
+    });
+    if (hasFutureAlt) return;
+    record.proposedAlternatives = proposeAlternatives(targetEvent, events);
+    await store.setJSON(conflictId, record);
+  } catch {
+    // Best-effort refresh — never let this break the cron run
+  }
+}
+
 function formatSlotLabel(startMs: number, endMs: number): string {
   const s = new Date(startMs);
   const e = new Date(endMs);
@@ -323,7 +353,12 @@ export async function runConflictHunt(): Promise<{
   for (const [a, b] of detected.overlaps) {
     const hash = conflictHash("overlap", [a, b]);
     const dedup = await store.get(`_alerted:${hash}`, { type: "text" }).catch(() => null);
-    if (dedup) continue;
+    if (dedup) {
+      // Already alerted — but if the existing record is still open and its alts are stale,
+      // refresh them so the user sees future-only suggestions next time the page loads.
+      await refreshAltsIfStale(store, hash, b, events);
+      continue;
+    }
     const alt = proposeAlternatives(b, events); // suggest moving the second event
     toRecord.push({
       id: hash,
@@ -341,7 +376,10 @@ export async function runConflictHunt(): Promise<{
   for (const [a, b] of detected.tightGaps) {
     const hash = conflictHash("tight_gap", [a, b]);
     const dedup = await store.get(`_alerted:${hash}`, { type: "text" }).catch(() => null);
-    if (dedup) continue;
+    if (dedup) {
+      await refreshAltsIfStale(store, hash, b, events);
+      continue;
+    }
     const gapMins = Math.round(
       (new Date(b.start).getTime() - new Date(a.end).getTime()) / 60000
     );
@@ -361,7 +399,10 @@ export async function runConflictHunt(): Promise<{
   for (const [focus, invader] of detected.focusViolations) {
     const hash = conflictHash("focus_violation", [focus, invader]);
     const dedup = await store.get(`_alerted:${hash}`, { type: "text" }).catch(() => null);
-    if (dedup) continue;
+    if (dedup) {
+      await refreshAltsIfStale(store, hash, invader, events);
+      continue;
+    }
     toRecord.push({
       id: hash,
       type: "focus_violation",
@@ -415,8 +456,21 @@ export async function listOpenConflicts(): Promise<ConflictRecord[]> {
   const all = await Promise.all(
     recordBlobs.map((b: any) => store.get(b.key, { type: "json" }).catch(() => null))
   );
+  // Cutoff: 1 hour in the past — anything starting before that is stale.
+  // Keeps "happening right now" alternatives visible while filtering yesterday's.
+  const staleCutoffMs = Date.now() - 3600_000;
   return (all.filter(Boolean) as ConflictRecord[])
     .filter((c) => c.status !== "resolved" && c.status !== "dismissed")
+    .map((c) => ({
+      ...c,
+      proposedAlternatives: (c.proposedAlternatives || []).filter((alt) => {
+        try {
+          return new Date(alt.start).getTime() > staleCutoffMs;
+        } catch {
+          return false;
+        }
+      }),
+    }))
     .sort((a, b) => b.detectedAt.localeCompare(a.detectedAt));
 }
 
