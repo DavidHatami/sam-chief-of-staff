@@ -2137,6 +2137,15 @@ function renderBriefingContent(d){
   const dur=d.durationMs?(Math.round(d.durationMs/100)/10)+'s':'';
   const chars=d.briefing?d.briefing.length+' chars':'';
   const sources=d.sources||{};
+  // Audio player — fetches /api/briefing/tts on demand. Lazy so we don't burn TTS quota
+  // generating audio for briefings the user never plays.
+  const dateForTts=(briefingsState&&briefingsState.selectedDate)||'';
+  const escDate=String(dateForTts).replace(/'/g,"\\'");
+  const ttsHtml='<div id="briefing-tts-bar" style="margin:14px 0 18px 0;padding:10px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'+
+    '<button id="briefing-tts-btn" onclick="playBriefingAudio(\''+escDate+'\',this)" style="padding:6px 14px;border-radius:6px;background:linear-gradient(135deg,#FFB400,#FF8C00);border:none;color:#fff;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">🔊 Play Briefing</button>'+
+    '<span style="font-size:11px;color:var(--text-muted);font-family:var(--mono);">SAM reads it aloud · ~1-2 min</span>'+
+    '<div id="briefing-audio-mount" style="flex:1;min-width:0;"></div>'+
+  '</div>';
   let sourcesHtml='';
   if(Object.keys(sources).length){
     sourcesHtml='<details style="margin-top:24px;border-top:1px solid var(--border);padding-top:14px;"><summary style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600;">📋 View source data fed to SAM</summary>';
@@ -2146,11 +2155,44 @@ function renderBriefingContent(d){
     }
     sourcesHtml+='</details>';
   }
-  content.innerHTML=body+
+  content.innerHTML=ttsHtml+body+
     '<div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);font-family:var(--mono);">'+
       'Generated '+esc(gen)+(dur?' · '+esc(dur):'')+(chars?' · '+esc(chars):'')+
     '</div>'+
     sourcesHtml;
+}
+async function playBriefingAudio(date,btn){
+  if(!date){showToast('No briefing date selected','err');return;}
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳ Generating audio...';
+  const mount=document.getElementById('briefing-audio-mount');
+  // ~60s ceiling: TTS first-pass on a long briefing can take 15-30s; cached calls return in <1s
+  const ctrl=new AbortController();
+  const killTimer=setTimeout(()=>ctrl.abort(),60000);
+  try{
+    const r=await fetch('/api/briefing/tts?date='+encodeURIComponent(date),{signal:ctrl.signal});
+    if(!r.ok){
+      let msg='HTTP '+r.status;
+      try{const d=await r.json();msg=d.error||msg;}catch{}
+      throw new Error(msg);
+    }
+    const cacheStatus=r.headers.get('X-Cache')||'?';
+    const blob=await r.blob();
+    const audioUrl=URL.createObjectURL(blob);
+    // Build the audio element and autoplay
+    mount.innerHTML='<audio id="briefing-audio-el" controls autoplay style="width:100%;height:32px;" src="'+audioUrl+'"></audio>';
+    const audio=document.getElementById('briefing-audio-el');
+    // When playback ends, free the blob
+    audio.addEventListener('ended',function(){try{URL.revokeObjectURL(audioUrl);}catch{}});
+    btn.style.display='none';
+    showToast(cacheStatus==='hit'?'Audio loaded from cache':'Audio generated · cached for next time','ok');
+  }catch(e){
+    btn.disabled=false;btn.textContent=orig;
+    const msg=e&&e.name==='AbortError'?'Timed out after 60s — try again':((e.message||e)+'');
+    showToast('Audio failed: '+msg.slice(0,160),'err');
+  }finally{
+    clearTimeout(killTimer);
+  }
 }
 async function runBriefingFromHistory(btn){
   // Reuses /api/briefing/now and refreshes the list when done.
