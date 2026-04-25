@@ -2,6 +2,7 @@ import type { Context, Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
+import { withHeartbeat } from "../lib/cron-heartbeat.ts";
 
 /**
  * SAM — YAHOO FAST-PATH PRE-WARMER
@@ -70,55 +71,55 @@ async function pullFolder(client: ImapFlow, mailbox: string, top: number) {
 }
 
 export default async (req: Request, context: Context) => {
-  const email = Netlify.env.get("YAHOO_EMAIL");
-  const appPassword = Netlify.env.get("YAHOO_APP_PASSWORD");
-  if (!email || !appPassword) {
-    console.error("[YAHOO-WARMER] credentials missing");
-    return;
-  }
+  await withHeartbeat("yahoo-warmer", async () => {
+    const email = Netlify.env.get("YAHOO_EMAIL");
+    const appPassword = Netlify.env.get("YAHOO_APP_PASSWORD");
+    if (!email || !appPassword) {
+      throw new Error("YAHOO_EMAIL or YAHOO_APP_PASSWORD missing");
+    }
 
-  const client = new ImapFlow({
-    host: "imap.mail.yahoo.com",
-    port: 993,
-    secure: true,
-    auth: { user: email, pass: appPassword },
-    logger: false,
-    greetingTimeout: 8000,
-    socketTimeout: 15000,
-    emitLogs: false,
+    const client = new ImapFlow({
+      host: "imap.mail.yahoo.com",
+      port: 993,
+      secure: true,
+      auth: { user: email, pass: appPassword },
+      logger: false,
+      greetingTimeout: 8000,
+      socketTimeout: 15000,
+      emitLogs: false,
+    });
+
+    const started = Date.now();
+    try {
+      await client.connect();
+      const [inbox, sent] = await Promise.all([
+        pullFolder(client, "INBOX", INBOX_TOP),
+        pullFolder(client, "Sent", SENT_TOP),
+      ]);
+
+      // Write snapshot FIRST. A logout failure after this point cannot lose
+      // successfully-fetched data.
+      const store = getStore({ name: "sam-yahoo-cache", consistency: "strong" });
+      const snapshot = {
+        inbox,
+        sent,
+        refreshedAt: new Date().toISOString(),
+        durationMs: Date.now() - started,
+      };
+      await store.setJSON("snapshot", snapshot);
+
+      // Logout is best-effort.
+      try { await client.logout(); } catch {}
+
+      console.log(
+        `[YAHOO-WARMER] ok inbox=${inbox.length} sent=${sent.length} ${Date.now() - started}ms`
+      );
+      return snapshot;
+    } catch (e: any) {
+      try { await client.logout(); } catch {}
+      throw e;  // re-throw so withHeartbeat records the failure
+    }
   });
-
-  const started = Date.now();
-  try {
-    await client.connect();
-    const [inbox, sent] = await Promise.all([
-      pullFolder(client, "INBOX", INBOX_TOP),
-      pullFolder(client, "Sent", SENT_TOP),
-    ]);
-
-    // Write snapshot FIRST. A logout failure after this point cannot lose
-    // successfully-fetched data — previously, a transient TLS hiccup during
-    // logout would discard a perfectly good fetch.
-    const store = getStore({ name: "sam-yahoo-cache", consistency: "strong" });
-    const snapshot = {
-      inbox,
-      sent,
-      refreshedAt: new Date().toISOString(),
-      durationMs: Date.now() - started,
-    };
-    await store.setJSON("snapshot", snapshot);
-
-    // Logout is best-effort. We already have the data; a failed logout just
-    // means the IMAP socket gets reaped by the timeout. No user impact.
-    try { await client.logout(); } catch {}
-
-    console.log(
-      `[YAHOO-WARMER] ok inbox=${inbox.length} sent=${sent.length} ${Date.now() - started}ms`
-    );
-  } catch (e: any) {
-    try { await client.logout(); } catch {}
-    console.error("[YAHOO-WARMER] failed:", e.message);
-  }
 };
 
 export const config: Config = {

@@ -1,16 +1,16 @@
 import type { Context, Config } from "@netlify/functions";
 import { runConflictHunt } from "../lib/conflicts-core.ts";
+import { withHeartbeat } from "../lib/cron-heartbeat.ts";
 
 /**
  * SAM PHASE 1.3 — SCHEDULED CALENDAR CONFLICT HUNTER
  *
  * Runs every 30 minutes. Scans next 14 days for overlaps, tight gaps,
- * and focus-block violations. Sends a digest email when new conflicts
- * appear. Dedupes on conflict hash so already-alerted issues go silent.
+ * and focus-block violations. Heartbeat-wrapped.
  */
 
 export default async (req: Request, context: Context) => {
-  try {
+  await withHeartbeat("conflicts-scheduled", async () => {
     const result = await runConflictHunt();
     console.log(
       `[CONFLICTS] events=${result.totalEvents}`,
@@ -20,9 +20,8 @@ export default async (req: Request, context: Context) => {
       `newRecorded=${result.newlyRecorded} notified=${result.notified}`,
       `(${result.durationMs}ms)`
     );
-  } catch (e: any) {
-    console.error("[CONFLICTS] scheduled run failed:", e.message);
-  }
+    return result;
+  });
 };
 
 export const config: Config = {

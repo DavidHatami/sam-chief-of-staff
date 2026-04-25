@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { writeHeartbeat } from "../lib/cron-heartbeat.ts";
 
 /**
  * SAM Nightly Backup — Data Insurance
@@ -26,6 +27,11 @@ export default async (req: Request) => {
   const GITHUB_PAT = Netlify.env.get("GITHUB_PAT");
   if (!GITHUB_PAT) {
     console.log("[BACKUP] ERROR: No GITHUB_PAT env var. Cannot push to sam-ops.");
+    await writeHeartbeat("backup-nightly", {
+      success: false,
+      durationMs: Date.now() - startTime,
+      error: "GITHUB_PAT env var missing",
+    });
     return;
   }
 
@@ -177,12 +183,27 @@ export default async (req: Request) => {
       } catch (statusErr) {
         console.log(`[BACKUP] Status blob write failed (non-fatal): ${statusErr}`);
       }
+      // Cron heartbeat — green
+      await writeHeartbeat("backup-nightly", {
+        success: true,
+        durationMs: elapsed,
+      });
     } else {
       const errText = await pushResp.text();
       console.log(`[BACKUP] GITHUB ERROR: ${pushResp.status} — ${errText.substring(0, 200)}`);
+      await writeHeartbeat("backup-nightly", {
+        success: false,
+        durationMs: Date.now() - startTime,
+        error: `GitHub HTTP ${pushResp.status}: ${errText.substring(0, 200)}`,
+      });
     }
   } catch (e) {
     console.log(`[BACKUP] PUSH FAILED: ${e}`);
+    await writeHeartbeat("backup-nightly", {
+      success: false,
+      durationMs: Date.now() - startTime,
+      error: String(e).substring(0, 300),
+    });
   }
 };
 

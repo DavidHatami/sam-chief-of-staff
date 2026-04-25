@@ -435,6 +435,16 @@ function samSignOut(){
       <div class="eld" style="padding:8px 0;font-size:12px;">Loading status...</div>
     </div>
   </div>
+  <!-- CRON HEALTH — watchdog visibility for all 7 scheduled jobs -->
+  <div class="card" id="cron-health-card" style="margin-top:0;padding:10px 14px;">
+    <div class="ch" style="margin-bottom:6px;">
+      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">⚙️ Cron Health<span id="cron-health-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+      <span class="badge" style="cursor:pointer" onclick="loadCronHealth(true)">REFRESH</span>
+    </div>
+    <div id="cron-health-rows" style="display:flex;flex-direction:column;gap:4px;">
+      <div class="eld" style="padding:8px 0;font-size:12px;">Loading cron status...</div>
+    </div>
+  </div>
   <!-- SAM DIALOGUE BOX -->
   <div class="card" style="margin-top:0;">
     <div class="ch">
@@ -1180,7 +1190,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash')loadSamStatus();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1761,6 +1771,68 @@ function renderUnifiedItem(m){
       '<div style="font-size:11px;color:var(--text-muted);line-height:1.5;">'+preview+(preview.length>=140?'…':'')+'</div>'+
     '</div>'+
   '</div>';
+}
+
+// ── CRON HEALTH — dashboard widget for the 7 scheduled jobs ──
+let cronHealthState={loaded:false,loading:false,lastLoad:0};
+async function loadCronHealth(forceRefresh){
+  if(cronHealthState.loading)return;
+  if(cronHealthState.loaded&&!forceRefresh&&Date.now()-cronHealthState.lastLoad<60000)return;
+  cronHealthState.loading=true;
+  const rows=document.getElementById('cron-health-rows');
+  if(!cronHealthState.loaded)rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">Loading cron status...</div>';
+  try{
+    const r=await fetch('/api/cron/health?cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    cronHealthState.loaded=true;cronHealthState.lastLoad=Date.now();
+    renderCronHealth(d);
+  }catch(e){
+    rows.innerHTML='<div class="eld" style="padding:8px 0;color:var(--red);font-size:12px;">Cron health load failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{cronHealthState.loading=false;}
+}
+function renderCronHealth(d){
+  const jobs=Array.isArray(d.jobs)?d.jobs:[];
+  const summary=d.summary||{};
+  const meta=document.getElementById('cron-health-meta');
+  const overallColor=summary.overall==='alarm'?'var(--red)':summary.overall==='warning'?'#EF9F27':'var(--green)';
+  meta.innerHTML='· <span style="color:'+overallColor+';font-weight:600;">'+(summary.overall||'?').toUpperCase()+'</span> · '+(summary.ok||0)+'/'+(summary.total||0)+' healthy';
+  const labels={
+    'briefing-daily':'🌅 Briefing',
+    'triage-scheduled':'📥 Triage',
+    'conflicts-scheduled':'⚠️ Conflicts',
+    'review-scheduled':'📊 Review',
+    'backup-nightly':'💾 Backup',
+    'yahoo-warmer':'📬 Yahoo warm',
+    'zoom-check-background':'🎙️ Zoom',
+  };
+  const order=['briefing-daily','triage-scheduled','conflicts-scheduled','review-scheduled','backup-nightly','yahoo-warmer','zoom-check-background'];
+  const sorted=order.map(n=>jobs.find(j=>j.job===n)).filter(Boolean);
+  const rows=document.getElementById('cron-health-rows');
+  if(sorted.length===0){rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">No jobs reporting yet — heartbeats start after first scheduled run after deploy.</div>';return;}
+  rows.innerHTML=sorted.map(j=>{
+    const color=j.status==='alarm'?'#E24B4A':j.status==='warning'?'#EF9F27':j.status==='ok'?'#1D9E75':'var(--text-muted)';
+    const dotChar=j.status==='alarm'?'●':j.status==='warning'?'◐':j.status==='ok'?'●':'○';
+    const last=j.lastRunAt?formatRelativeTime(j.lastRunAt):'never';
+    const dur=j.lastDurationMs?Math.round(j.lastDurationMs/100)/10+'s':'';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02);" title="'+esc(j.reason||'')+'">'+
+      '<span style="color:'+color+';font-size:13px;flex-shrink:0;">'+dotChar+'</span>'+
+      '<span style="font-size:12px;color:var(--text);min-width:110px;font-weight:500;">'+(labels[j.job]||j.job)+'</span>'+
+      '<span style="font-size:11px;color:var(--text-muted);font-family:var(--mono);min-width:56px;">'+last+'</span>'+
+      (dur?'<span style="font-size:10px;color:var(--text-muted);font-family:var(--mono);">'+dur+'</span>':'')+
+      '<div style="flex:1;"></div>'+
+      (j.consecutiveFailures>=1?'<span style="color:#EF9F27;font-size:10px;font-family:var(--mono);">×'+j.consecutiveFailures+' fail</span>':'')+
+    '</div>';
+  }).join('');
+}
+function formatRelativeTime(iso){
+  try{
+    const ageMs=Date.now()-new Date(iso).getTime();
+    if(ageMs<60000)return Math.round(ageMs/1000)+'s ago';
+    if(ageMs<3600000)return Math.round(ageMs/60000)+'m ago';
+    if(ageMs<86400000)return (ageMs/3600000).toFixed(1)+'h ago';
+    return (ageMs/86400000).toFixed(1)+'d ago';
+  }catch{return '?';}
 }
 
 // ── SAM STATUS CARD — dashboard roll-up of all queues, briefing, backup ──
@@ -5931,6 +6003,7 @@ loadTasks();
 
 // Load SAM Status card on init — populates dashboard roll-up before user scrolls
 loadSamStatus();
+loadCronHealth();
 
 // ── PREFETCH WARMUP ──
 // On dashboard load, fire small parallel requests against the read-cacheable endpoints.
@@ -5948,6 +6021,7 @@ setTimeout(function(){
     '/api/review/history',
     '/api/unified-inbox',
     '/api/transcripts/summaries',
+    '/api/cron/health',
   ];
   for(const u of prefetchUrls){
     const ctrl=new AbortController();

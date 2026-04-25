@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { withHeartbeat } from "../lib/cron-heartbeat.ts";
 
 /**
  * Zoom Auto-Processor — Background Scheduled Function
@@ -52,7 +53,7 @@ async function getZoomToken(): Promise<string> {
 }
 
 // ── MAIN PROCESSOR ──
-export default async (req: Request) => {
+async function zoomCheckImpl(req: Request) {
   console.log("[ZOOM-AUTO] Starting transcript scan...");
 
   const zoomToken = await getZoomToken();
@@ -60,7 +61,7 @@ export default async (req: Request) => {
 
   if (!anthropicKey) {
     console.log("[ZOOM-AUTO] No Anthropic API key — skipping AI processing");
-    return;
+    return { skipped: true };
   }
 
   // 1. Get processed recordings list from Blobs
@@ -326,6 +327,11 @@ export default async (req: Request) => {
   console.log(
     `[ZOOM-AUTO] Done. Processed ${unprocessed.length} recordings. Total processed: ${processedIds.length}`
   );
+  return { processed: unprocessed.length, total: processedIds.length };
+}
+
+export default async (req: Request) => {
+  await withHeartbeat("zoom-check-background", () => zoomCheckImpl(req));
 };
 
 export const config: Config = {

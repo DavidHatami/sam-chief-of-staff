@@ -1,21 +1,20 @@
 import type { Context, Config } from "@netlify/functions";
 import { buildAndSendBriefing } from "../lib/briefing-core.ts";
+import { withHeartbeat } from "../lib/cron-heartbeat.ts";
 
 /**
  * SAM PHASE 1.1 — SCHEDULED MORNING BRIEFING
  *
  * Fires every day at 10:00 UTC (6 AM EDT / 5 AM EST).
- * Delegates all logic to lib/briefing-core.ts so the manual HTTP
- * trigger (briefing.mts) shares the same implementation.
+ * Heartbeat-wrapped so cron-watchdog detects silent failures.
  */
 
 export default async (req: Request, context: Context) => {
-  try {
+  await withHeartbeat("briefing-daily", async () => {
     const result = await buildAndSendBriefing();
     console.log("Scheduled briefing sent:", result.key, `(${result.durationMs}ms)`);
-  } catch (e: any) {
-    console.error("Scheduled briefing failed:", e.message, e.stack);
-  }
+    return result;
+  });
 };
 
 export const config: Config = {
