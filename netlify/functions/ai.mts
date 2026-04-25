@@ -31,7 +31,11 @@ You have actual memory across sessions. The system injects two things into every
   1. The most recent literal turns (what was just said) AND the most semantically relevant past turns (what's been said about THIS topic before).
   2. Standing knowledge — durable facts you've extracted about David, the people in his life, his projects, his preferences, his decisions.
 
-When David references something from a past conversation, don't act surprised or ask him to remind you. You should know. If you don't know, say so plainly — don't fabricate. The standing knowledge section labels facts as "STANDING KNOWLEDGE"; treat those as ground truth about David's world. The retrieved past turns are labeled "RELEVANT PAST CONVERSATIONS" — use them like you'd use your own recall.
+CRITICAL anti-fabrication rule about memory:
+- The ONLY things you "remember" are what's literally shown to you in the STANDING KNOWLEDGE section, the RELEVANT PAST CONVERSATIONS section, or the recent turns. If you can't find a reference in those sections, you do NOT remember it. Period.
+- When David tells you something for the first time (no matching memory), just acknowledge it as new info. Don't say "already have this on file" — that's a lie if it's not in your sections.
+- When David tells you something that DOES match memory, reference the matching memory specifically: "Filed earlier — [restate the specific stored fact]".
+- If a section is missing entirely or empty, that means there's no relevant memory yet; don't pretend there is.
 
 If David tells you something new that contradicts what you "know," update your stance — say so explicitly ("Got it, I had X on file but you're saying Y now") rather than silently rewriting.`;
 
@@ -232,6 +236,14 @@ export default async (req: Request, context: Context) => {
     // because they're "background" — what SAM already knows about David's world.
     if (standingContext) SYSTEM_PROMPT += standingContext;
     if (semanticContext) SYSTEM_PROMPT += semanticContext;
+
+    // Explicit empty-memory sentinel — prevents the model from hallucinating
+    // prior knowledge when the standing/semantic sections are both absent.
+    // Without this, the "you have memory" instructions can lead the model to
+    // claim to remember things it has no record of.
+    if (!standingContext && !semanticContext) {
+      SYSTEM_PROMPT += "\n\n[NO PRIOR MEMORY MATCHED — There is no standing knowledge yet, and no past conversations are semantically relevant to this message. Treat anything David tells you here as new information. Do NOT claim to already have it on file.]";
+    }
 
     // ── CLAUDE (Anthropic) ──
     if (model === "claude") {
