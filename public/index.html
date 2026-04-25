@@ -335,6 +335,7 @@ function samSignOut(){
     <div class="ni" onclick="go('zoom',this)"><span class="nic">🎥</span><span>Zoom</span><span class="nib" id="zbadge" style="display:none"></span></div>
     <div class="ni" onclick="go('events',this)"><span class="nic">📆</span><span>Events</span></div>
     <div class="ni" onclick="go('projects',this)"><span class="nic">📁</span><span>Projects</span><span class="nib" id="pbadge" style="display:none"></span></div>
+    <div class="ni" onclick="go('briefings',this)"><span class="nic">🌅</span><span>Briefings</span></div>
     <div class="ns">Tools</div>
     <div class="ni" onclick="go('ai',this)"><span class="nic">🧠</span><span>AI Workbench</span></div>
     <div class="ni" onclick="go('schedule',this)"><span class="nic">🔗</span><span>Scheduling</span></div>
@@ -830,6 +831,19 @@ function samSignOut(){
     </div>
   </div>
 </div>
+<div id="p-briefings" class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+    <h1 style="font-size:20px;margin:0;">🌅 Morning Briefings</h1>
+    <span id="briefings-meta" style="font-size:11px;color:var(--text-muted);font-family:var(--mono);"></span>
+    <div style="flex:1;"></div>
+    <button onclick="loadBriefings(true)" id="briefings-refresh-btn" style="padding:5px 12px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;">↻ Refresh</button>
+    <button onclick="runBriefingFromHistory(this)" title="Generate a fresh briefing right now (~25s)" style="padding:5px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(255,180,0,0.18),rgba(255,140,0,0.18));border:1px solid rgba(255,180,0,0.35);color:#FFB400;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;">⚡ Generate Now</button>
+  </div>
+  <div id="briefings-pills" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;"></div>
+  <div id="briefings-content" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px 24px;min-height:300px;">
+    <div class="eld">Loading briefing archive...</div>
+  </div>
+</div>
 <div id="p-ai" class="page">
   <div class="hdr"><div><h1>AI Workbench</h1><p class="hdr-sub">Research and query across AI platforms — Claude, OpenAI, and more</p></div></div>
   <div class="ai-models">
@@ -1076,7 +1090,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1541,6 +1555,128 @@ async function runTriageNow(btn){
   }catch(e){
     const msg=e&&e.name==='AbortError'?'Timed out after 60s':((e.message||e)+'');
     showToast('Triage run failed: '+msg.slice(0,160),'err');
+  }finally{
+    clearTimeout(killTimer);
+    btn.textContent=orig;btn.disabled=false;
+  }
+}
+
+// ── BRIEFING HISTORY — browse past archived briefings ──
+let briefingsState={dates:[],selectedDate:null,cache:{},loaded:false,loading:false};
+function mdToHtmlBriefing(md){
+  let s=String(md||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  s=s.replace(/^### (.+)$/gm,'<h3 style="font-size:14px;color:var(--text);margin:18px 0 6px 0;">$1</h3>');
+  s=s.replace(/^## (.+)$/gm,'<h2 style="font-size:15px;color:var(--accent);margin:22px 0 8px 0;letter-spacing:0.04em;text-transform:uppercase;font-weight:700;">$1</h2>');
+  s=s.replace(/^# (.+)$/gm,'<h1 style="font-size:22px;color:var(--text);margin:0 0 14px 0;font-weight:700;">$1</h1>');
+  s=s.replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text);">$1</strong>');
+  s=s.replace(/\*(.+?)\*/g,'<em>$1</em>');
+  s=s.replace(/`([^`]+)`/g,'<code style="background:var(--surface-2);padding:1px 6px;border-radius:3px;font-family:var(--mono);font-size:12px;">$1</code>');
+  // Group consecutive bullet lines into <ul>
+  s=s.replace(/(?:^|\n)((?:- [^\n]+(?:\n|$))+)/g,function(_,block){
+    const items=block.trim().split('\n').map(l=>l.replace(/^- /,'')).map(l=>'<li style="margin:4px 0;">'+l+'</li>').join('');
+    return '\n<ul style="margin:8px 0 8px 20px;padding:0;color:var(--text-dim);line-height:1.6;">'+items+'</ul>\n';
+  });
+  // Wrap remaining text as paragraphs
+  s=s.split(/\n\n+/).map(para=>{
+    para=para.trim();
+    if(!para)return'';
+    if(/^<(h[123]|ul|ol)/.test(para))return para;
+    return '<p style="margin:10px 0;color:var(--text-dim);line-height:1.65;">'+para.replace(/\n/g,'<br>')+'</p>';
+  }).join('\n');
+  return s;
+}
+async function loadBriefings(forceRefresh){
+  if(briefingsState.loading)return;
+  if(briefingsState.loaded&&!forceRefresh)return;
+  briefingsState.loading=true;
+  const content=document.getElementById('briefings-content');
+  if(!briefingsState.loaded)content.innerHTML='<div class="eld">Loading briefing archive...</div>';
+  try{
+    const r=await fetch('/api/briefing/history?cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    briefingsState.dates=Array.isArray(d.dates)?d.dates:[];
+    briefingsState.loaded=true;
+    if(forceRefresh)briefingsState.cache={};
+    renderBriefingPills();
+    if(briefingsState.dates.length>0){
+      // Auto-select most recent
+      const target=briefingsState.dates.includes(briefingsState.selectedDate)?briefingsState.selectedDate:briefingsState.dates[0];
+      await selectBriefingDate(target);
+    }else{
+      content.innerHTML='<div class="eld">No briefings archived yet. Generate one with the button above.</div>';
+    }
+  }catch(e){
+    content.innerHTML='<div class="eld" style="color:var(--red);">Briefing archive load failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{briefingsState.loading=false;}
+}
+function renderBriefingPills(){
+  const dates=briefingsState.dates;
+  document.getElementById('briefings-meta').textContent=dates.length+' archived · loaded '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  const today=new Date().toISOString().slice(0,10);
+  const yest=new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const html=dates.map(d=>{
+    const lbl=d===today?'Today':d===yest?'Yesterday':new Date(d+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const active=briefingsState.selectedDate===d;
+    const escD=d.replace(/'/g,"\\'");
+    return '<button onclick="selectBriefingDate(\''+escD+'\')" style="padding:6px 14px;border-radius:14px;background:'+(active?'var(--accent)':'var(--surface-2)')+';border:1px solid '+(active?'var(--accent)':'var(--border)')+';color:'+(active?'#fff':'var(--text-dim)')+';font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);">'+lbl+'</button>';
+  }).join('');
+  document.getElementById('briefings-pills').innerHTML=html;
+}
+async function selectBriefingDate(date){
+  briefingsState.selectedDate=date;
+  renderBriefingPills();
+  const content=document.getElementById('briefings-content');
+  if(briefingsState.cache[date]){renderBriefingContent(briefingsState.cache[date]);return;}
+  content.innerHTML='<div class="eld">Loading '+esc(date)+' briefing...</div>';
+  try{
+    const r=await fetch('/api/briefing/get?date='+encodeURIComponent(date)+'&cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    briefingsState.cache[date]=d;
+    renderBriefingContent(d);
+  }catch(e){
+    content.innerHTML='<div class="eld" style="color:var(--red);">Failed to load '+esc(date)+': '+esc((e.message||e)+'')+'</div>';
+  }
+}
+function renderBriefingContent(d){
+  const content=document.getElementById('briefings-content');
+  const body=mdToHtmlBriefing(d.briefing||'');
+  const gen=d.generatedAt?new Date(d.generatedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+  const dur=d.durationMs?(Math.round(d.durationMs/100)/10)+'s':'';
+  const chars=d.briefing?d.briefing.length+' chars':'';
+  const sources=d.sources||{};
+  let sourcesHtml='';
+  if(Object.keys(sources).length){
+    sourcesHtml='<details style="margin-top:24px;border-top:1px solid var(--border);padding-top:14px;"><summary style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600;">📋 View source data fed to SAM</summary>';
+    for(const[name,text]of Object.entries(sources)){
+      const t=String(text||'').slice(0,3000);
+      sourcesHtml+='<div style="margin-top:10px;"><div style="font-size:11px;color:var(--text);font-weight:600;margin-bottom:4px;">'+esc(name)+'</div><pre style="font-size:11px;color:var(--text-muted);background:var(--surface-2);padding:10px 12px;border-radius:6px;border:1px solid var(--border);white-space:pre-wrap;font-family:var(--mono);max-height:240px;overflow-y:auto;line-height:1.5;">'+esc(t)+(text&&text.length>3000?'\n…(truncated)':'')+'</pre></div>';
+    }
+    sourcesHtml+='</details>';
+  }
+  content.innerHTML=body+
+    '<div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);font-family:var(--mono);">'+
+      'Generated '+esc(gen)+(dur?' · '+esc(dur):'')+(chars?' · '+esc(chars):'')+
+    '</div>'+
+    sourcesHtml;
+}
+async function runBriefingFromHistory(btn){
+  // Reuses /api/briefing/now and refreshes the list when done.
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳ Generating...';
+  const ctrl=new AbortController();
+  const killTimer=setTimeout(()=>ctrl.abort(),35000);
+  try{
+    const r=await fetch('/api/briefing/now',{method:'POST',signal:ctrl.signal});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+    showToast('Briefing generated · check your email','ok');
+    briefingsState.loaded=false;
+    await loadBriefings(true);
+  }catch(e){
+    const msg=e&&e.name==='AbortError'?'Timed out after 35s — the briefing may still complete in background':((e.message||e)+'');
+    showToast('Generate failed: '+msg.slice(0,160),'err');
   }finally{
     clearTimeout(killTimer);
     btn.textContent=orig;btn.disabled=false;
