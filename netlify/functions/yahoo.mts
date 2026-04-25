@@ -149,11 +149,13 @@ export default async (req: Request, context: Context) => {
       if (msgId) {
         const cacheKey = `body:${msgId}`;
         let cached = getCached(bodyCache, cacheKey, BODY_TTL_MS);
+        let cacheTier: "hit" | "l2-hit" = "hit"; // "hit" = L1, "l2-hit" = L2 (cold-start-survivor)
         // L1 miss → try L2 persistent blob (survives cold start)
         if (!cached) {
           const l2 = await l2Get(cacheKey, BODY_TTL_MS);
           if (l2) {
             cached = l2;
+            cacheTier = "l2-hit";
             setCached(bodyCache, cacheKey, cached); // promote into L1
           }
         }
@@ -176,7 +178,7 @@ export default async (req: Request, context: Context) => {
               // If mark-read fails, leave cached.isRead alone so UI state matches server
             }
           }
-          return new Response(JSON.stringify(cached), { headers: { ...headers, "X-Cache": "hit" } });
+          return new Response(JSON.stringify(cached), { headers: { ...headers, "X-Cache": cacheTier } });
         }
       } else {
         const cacheKey = `list:${folder}:${top}:${offset}`;
@@ -272,9 +274,9 @@ export default async (req: Request, context: Context) => {
 
           lock.release();
           await client.logout();
-          // Write body to cache (L1 sync, L2 fire-and-forget)
+          // Write body to cache (L1 sync, L2 awaited so blob lands before Lambda exits)
           setCached(bodyCache, `body:${String(uid)}`, result);
-          l2Set(`body:${String(uid)}`, result).catch(() => {});
+          try { await l2Set(`body:${String(uid)}`, result); } catch {}
           // If we marked as read, invalidate list cache (isRead count changed)
           if (!isPrefetch) invalidateListCache();
           return new Response(JSON.stringify(result), { headers: { ...headers, "X-Cache": "miss" } });
@@ -330,7 +332,7 @@ export default async (req: Request, context: Context) => {
         const hasMore = (offset + messages.length) < total;
         const listResult = { value: messages, total, offset, hasMore };
         setCached(listCache, `list:${folder}:${top}:${offset}`, listResult);
-        l2Set(`list:${folder}:${top}:${offset}`, listResult).catch(() => {});
+        try { await l2Set(`list:${folder}:${top}:${offset}`, listResult); } catch {}
         return new Response(JSON.stringify(listResult), { headers: { ...headers, "X-Cache": "miss" } });
       } catch (err) {
         lock.release();
