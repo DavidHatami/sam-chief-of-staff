@@ -24,8 +24,10 @@ import { simpleParser } from "mailparser";
 // Read path: L1 (<1ms hit) → L2 blob (~30ms hit) → live IMAP (~5-8s miss).
 // Write path: write through to both L1 and L2.
 type CacheEntry = { timestamp: number; data: any };
-const LIST_TTL_MS = 30000;   // 30s for list views
-const BODY_TTL_MS = 300000;  // 5min for single-message bodies (bodies never change)
+const LIST_TTL_MS = 30000;        // L1 in-memory TTL — 30s for list views
+const BODY_TTL_MS = 300000;       // L1 in-memory TTL — 5min for bodies (immutable)
+const L2_LIST_TTL_MS = 180000;    // L2 blob TTL — 3min lists, longer than L1 so cold starts rescue
+const L2_BODY_TTL_MS = 1800000;   // L2 blob TTL — 30min bodies (still fresh-enough, message bodies don't change)
 const listCache: Map<string, CacheEntry> = new Map();
 const bodyCache: Map<string, CacheEntry> = new Map();
 
@@ -152,7 +154,7 @@ export default async (req: Request, context: Context) => {
         let cacheTier: "hit" | "l2-hit" = "hit"; // "hit" = L1, "l2-hit" = L2 (cold-start-survivor)
         // L1 miss → try L2 persistent blob (survives cold start)
         if (!cached) {
-          const l2 = await l2Get(cacheKey, BODY_TTL_MS);
+          const l2 = await l2Get(cacheKey, L2_BODY_TTL_MS);
           if (l2) {
             cached = l2;
             cacheTier = "l2-hit";
@@ -185,7 +187,7 @@ export default async (req: Request, context: Context) => {
         let cached = getCached(listCache, cacheKey, LIST_TTL_MS);
         // L1 miss → try L2 persistent blob
         if (!cached) {
-          const l2 = await l2Get(cacheKey, LIST_TTL_MS);
+          const l2 = await l2Get(cacheKey, L2_LIST_TTL_MS);
           if (l2) {
             cached = l2;
             setCached(listCache, cacheKey, cached); // promote into L1
