@@ -1518,6 +1518,7 @@ function renderTriageItem(item){
       '<span style="color:var(--text-muted);font-size:11px;font-family:var(--mono);">'+when+'</span>'+
       '<div style="flex:1;"></div>'+
       '<button onclick="approveTriage(\''+escId+'\',this)" style="padding:4px 10px;border-radius:5px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.35);color:var(--green);font-size:10px;font-weight:600;cursor:pointer;">✓ Approve</button>'+
+      (draftReply?'<button onclick="sendTriageReply(\''+escId+'\',this)" style="padding:4px 10px;border-radius:5px;background:rgba(74,124,255,0.18);border:1px solid rgba(74,124,255,0.4);color:var(--accent);font-size:10px;font-weight:600;cursor:pointer;">📤 Send Reply</button>':'')+
       '<button onclick="dismissTriage(\''+escId+'\',this)" style="padding:4px 10px;border-radius:5px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:var(--red);font-size:10px;font-weight:600;cursor:pointer;">✗ Dismiss</button>'+
     '</div>'+
     '<div style="font-size:13px;font-weight:600;color:var(--text);line-height:1.4;">'+subject+'</div>'+
@@ -1528,6 +1529,25 @@ function renderTriageItem(item){
   '</div>';
 }
 function setTriageFilter(f){triageState.filter=f;renderTriage();}
+async function sendTriageReply(id,btn){
+  // Find the item to confirm what we're sending
+  const item=triageState.pending.find(x=>x.id===id);
+  if(!item){showToast('Item not found','err');return;}
+  const draft=(item.draftReply||'').trim();
+  if(!draft||draft==='None'){showToast('No draft reply on this item','err');return;}
+  const to=item.fromEmail||'unknown';
+  if(!confirm('Send this reply to '+to+'?\n\nSubject: Re: '+(item.subject||'')+'\n\n'+(draft.length>200?draft.slice(0,200)+'...':draft))){return;}
+  btn.disabled=true;btn.textContent='⏳ Sending...';
+  try{
+    const r=await fetch('/api/triage/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+    triageState.pending=triageState.pending.filter(x=>x.id!==id);
+    renderTriage();
+    samStatusState.loaded=false;
+    showToast('✓ Reply sent to '+to,'ok');
+  }catch(e){btn.disabled=false;btn.textContent='📤 Send Reply';showToast('Send failed: '+(e.message||e).slice(0,160),'err');}
+}
 async function approveTriage(id,btn){
   btn.disabled=true;btn.textContent='...';
   try{

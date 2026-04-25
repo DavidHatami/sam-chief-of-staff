@@ -61,11 +61,55 @@ export default async (req: Request, context: Context) => {
     try {
       const { id, editedReply } = await req.json();
       if (!id) return json({ error: "Missing id" }, 400);
-      // Update status first (idempotency safety)
-      const ok = await updateTriageStatus(id, "sent", editedReply);
-      // Actual send is wired in a future pass — for now we just mark sent.
-      // David can review drafts in the UI and send from his native mail client.
-      return json({ ok, note: "marked sent — actual send wire-up pending UI" }, ok ? 200 : 404);
+
+      // Load the triage item to get recipient + subject + draft
+      const { getStore } = await import("@netlify/blobs");
+      const store = getStore({ name: "sam-triage", consistency: "strong" });
+      const item: any = await store.get(id, { type: "json" });
+      if (!item) return json({ error: "Triage item not found" }, 404);
+
+      const replyBody = (editedReply !== undefined ? editedReply : item.draftReply || "").trim();
+      if (!replyBody || replyBody === "None") {
+        return json({ error: "No reply body — refusing to send empty message" }, 400);
+      }
+
+      const toAddr = item.fromEmail || "";
+      if (!toAddr) return json({ error: "No recipient address on triage item" }, 400);
+
+      const subject = (item.subject || "").startsWith("Re:") ? item.subject : `Re: ${item.subject || ""}`;
+
+      // Route by account. Per memory: "Yahoo send routes through M365."
+      const sendRoute = item.account === "gmail" ? "/api/gmail/mail/send" : "/api/m365/mail/send";
+      const origin = new URL(req.url).origin;
+
+      const sendResp = await fetch(`${origin}${sendRoute}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: [toAddr],
+          subject,
+          content: replyBody,
+          contentType: "Text",
+        }),
+      });
+
+      if (!sendResp.ok) {
+        const errBody = await sendResp.text();
+        return json({
+          error: `Send failed via ${sendRoute}: HTTP ${sendResp.status} — ${errBody.substring(0, 200)}`,
+          route: sendRoute,
+        }, 502);
+      }
+
+      // Update triage status only after a confirmed send
+      const ok = await updateTriageStatus(id, "sent", replyBody);
+      return json({
+        ok,
+        sent: true,
+        route: sendRoute,
+        to: toAddr,
+        subject,
+      }, ok ? 200 : 404);
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
