@@ -389,6 +389,7 @@ function samSignOut(){
         <div style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;">S</div>
         <div><h3 style="margin:0;">Talk to SAM</h3><div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);">Your Chief of Staff — always on</div></div>
       </div>
+      <button onclick="runBriefingNow(this)" id="brief-now-btn" title="Synthesize today's morning briefing and email it to admin@edupolicy.ai (takes up to 25s)" style="padding:5px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(239,159,39,0.15),rgba(186,117,23,0.15));border:1px solid rgba(239,159,39,0.35);color:#EF9F27;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;margin-right:8px;transition:all 0.15s;">🌅 Brief Me Now</button>
       <span class="badge">LIVE</span>
     </div>
     <div id="sam-msgs" style="max-height:240px;overflow-y:auto;margin-bottom:10px;min-height:70px;">
@@ -1371,6 +1372,44 @@ async function runBackupNow(){
   }catch(e){
     btn.textContent='Error';btn.style.color='var(--red)';
     setTimeout(()=>{btn.textContent='🔒 Backup Now';btn.style.color='';btn.disabled=false;},3000);
+  }
+}
+// ── PHASE 1.1 MORNING BRIEFING — manual trigger from dashboard ──
+async function runBriefingNow(btn){
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳ Synthesizing...';btn.style.opacity='0.7';
+  const t0=Date.now();
+  try{
+    const r=await fetch('/api/briefing/now',{method:'POST'});
+    const d=await r.json();
+    const elapsed=((Date.now()-t0)/1000).toFixed(1);
+    if(!r.ok){
+      btn.textContent='✗ Failed';btn.style.color='var(--red)';
+      showToast('Briefing failed: '+(d.error||'HTTP '+r.status).slice(0,160),'err');
+      setTimeout(()=>{btn.textContent=orig;btn.style.color='';btn.style.opacity='';btn.disabled=false;},4000);
+      return;
+    }
+    btn.textContent='✓ Sent ('+elapsed+'s)';btn.style.color='var(--green)';
+    showToast('Briefing for '+d.key+' delivered to admin@edupolicy.ai · '+elapsed+'s','ok');
+    // Drop the preview into the SAM dialogue so it's visible without leaving the dashboard
+    const msgs=document.getElementById('sam-msgs');
+    if(msgs){
+      const div=document.createElement('div');
+      div.className='ai-msg bot';
+      div.style.marginBottom='8px';
+      const av=document.createElement('div');av.className='av';av.style.cssText='width:22px;height:22px;font-size:10px;background:linear-gradient(135deg,#EF9F27,#BA7517);';av.textContent='🌅';
+      const bub=document.createElement('div');bub.className='bubble';bub.style.cssText='font-size:13px;line-height:1.55;';
+      const preview=String(d.preview||'').slice(0,800);
+      bub.innerHTML='<strong>Morning Briefing — '+(d.key||'today')+'</strong><br><span style="font-size:11px;color:var(--text-muted);font-family:var(--mono);">delivered to admin@edupolicy.ai · '+elapsed+'s · archived to blob</span><br><br>'+preview.replace(/</g,'&lt;').replace(/\n/g,'<br>')+(d.preview&&d.preview.length>=300?'<br><span style="color:var(--text-muted);font-size:11px;">…full briefing in your inbox</span>':'');
+      div.appendChild(av);div.appendChild(bub);
+      msgs.appendChild(div);
+      msgs.scrollTop=msgs.scrollHeight;
+    }
+    setTimeout(()=>{btn.textContent=orig;btn.style.color='';btn.style.opacity='';btn.disabled=false;},5000);
+  }catch(e){
+    btn.textContent='✗ Network error';btn.style.color='var(--red)';
+    showToast('Briefing network error: '+(e.message||e).slice(0,160),'err');
+    setTimeout(()=>{btn.textContent=orig;btn.style.color='';btn.style.opacity='';btn.disabled=false;},4000);
   }
 }
 async function checkBackupStatus(){
