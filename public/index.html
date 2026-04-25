@@ -455,6 +455,16 @@ function samSignOut(){
       <div class="eld" style="padding:8px 0;font-size:12px;">Loading credential status...</div>
     </div>
   </div>
+  <!-- SMOKE TEST — last post-deploy E2E result -->
+  <div class="card" id="smoke-test-card" style="margin-top:0;padding:10px 14px;">
+    <div class="ch" style="margin-bottom:6px;">
+      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🧪 Smoke Test<span id="smoke-test-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+      <span class="badge" style="cursor:pointer" onclick="runSmokeTestNow(this)" id="smoke-run-btn">RUN NOW</span>
+    </div>
+    <div id="smoke-test-rows" style="display:flex;flex-direction:column;gap:4px;">
+      <div class="eld" style="padding:8px 0;font-size:12px;">Loading last smoke test...</div>
+    </div>
+  </div>
   <!-- SAM DIALOGUE BOX -->
   <div class="card" style="margin-top:0;">
     <div class="ch">
@@ -1200,7 +1210,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();loadCredHealth();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();loadCredHealth();loadSmokeTest();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1781,6 +1791,77 @@ function renderUnifiedItem(m){
       '<div style="font-size:11px;color:var(--text-muted);line-height:1.5;">'+preview+(preview.length>=140?'…':'')+'</div>'+
     '</div>'+
   '</div>';
+}
+
+// ── SMOKE TEST — display last E2E result, allow manual run ──
+let smokeTestState={loaded:false,loading:false,running:false,lastLoad:0};
+async function loadSmokeTest(forceRefresh){
+  if(smokeTestState.loading)return;
+  if(smokeTestState.loaded&&!forceRefresh&&Date.now()-smokeTestState.lastLoad<60000)return;
+  smokeTestState.loading=true;
+  const rows=document.getElementById('smoke-test-rows');
+  if(!smokeTestState.loaded)rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">Loading last smoke test...</div>';
+  try{
+    const r=await fetch('/api/smoke-test?last=1&cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    smokeTestState.loaded=true;smokeTestState.lastLoad=Date.now();
+    renderSmokeTest(d);
+  }catch(e){
+    rows.innerHTML='<div class="eld" style="padding:8px 0;color:var(--red);font-size:12px;">Smoke test load failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{smokeTestState.loading=false;}
+}
+function renderSmokeTest(d){
+  const rows=document.getElementById('smoke-test-rows');
+  const meta=document.getElementById('smoke-test-meta');
+  if(!d||!d.summary){
+    meta.innerHTML='';
+    rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">No smoke test has run yet. Click RUN NOW to validate every endpoint (~10s).</div>';
+    return;
+  }
+  const s=d.summary||{};
+  const passed=s.passed||0,failed=s.failed||0,total=s.total||0;
+  const allGreen=failed===0;
+  const overallColor=allGreen?'var(--green)':'#E24B4A';
+  const when=d.runAt?formatRelativeTime(d.runAt):'?';
+  meta.innerHTML='· <span style="color:'+overallColor+';font-weight:600;">'+(allGreen?'PASS':'FAIL')+'</span> · '+passed+'/'+total+' · '+when;
+  if(allGreen){
+    rows.innerHTML='<div style="padding:6px 8px;border-radius:6px;background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.25);font-size:12px;color:var(--text-dim);"><span style="color:var(--green);font-weight:600;">✓ All '+total+' endpoints validated</span> · ran in '+(s.durationMs?Math.round(s.durationMs/100)/10+'s':'?')+(d.deployId?' · deploy '+esc(d.deployId.substring(0,8)):'')+'</div>';
+  }else{
+    const fails=(d.results||[]).filter(r=>r.status==='fail');
+    rows.innerHTML='<div style="padding:6px 8px;border-radius:6px;background:rgba(226,75,74,0.08);border:1px solid rgba(226,75,74,0.25);font-size:12px;color:var(--text-dim);margin-bottom:6px;"><span style="color:var(--red);font-weight:600;">✗ '+failed+' of '+total+' endpoints failing</span></div>'+
+      fails.map(f=>'<div style="padding:5px 8px;border-radius:6px;background:rgba(255,255,255,0.02);font-size:11px;font-family:var(--mono);color:var(--text-muted);"><span style="color:var(--red);">●</span> '+esc(f.endpoint)+' — '+esc(f.reason||'fail')+' (HTTP '+(f.httpCode||'?')+')</div>').join('');
+  }
+}
+async function runSmokeTestNow(btn){
+  if(smokeTestState.running)return;
+  smokeTestState.running=true;
+  const orig=btn.textContent;
+  btn.textContent='RUNNING...';
+  btn.style.opacity='0.6';
+  document.getElementById('smoke-test-rows').innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">Running E2E test against every endpoint... ~10-20s</div>';
+  try{
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),60000);
+    const r=await fetch('/api/smoke-test',{method:'GET',signal:ctrl.signal});
+    clearTimeout(timer);
+    const d=await r.json();
+    // Server returns 500 on any failure but body still has full report — render either way
+    smokeTestState.lastLoad=Date.now();
+    renderSmokeTest(d);
+    if((d.summary?.failed||0)===0){
+      showToast('Smoke test PASS — all '+(d.summary?.total||0)+' endpoints valid','ok');
+    }else{
+      showToast('Smoke test FAIL — '+(d.summary?.failed||0)+' regressions','err');
+    }
+  }catch(e){
+    showToast('Smoke run failed: '+(e.message||e).slice(0,160),'err');
+    document.getElementById('smoke-test-rows').innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;color:var(--red);">Run failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{
+    btn.textContent=orig;
+    btn.style.opacity='1';
+    smokeTestState.running=false;
+  }
 }
 
 // ── CREDENTIAL HEALTH — pings every external API to confirm key still works ──
@@ -6059,6 +6140,7 @@ loadTasks();
 loadSamStatus();
 loadCronHealth();
 loadCredHealth();
+loadSmokeTest();
 
 // ── PREFETCH WARMUP ──
 // On dashboard load, fire small parallel requests against the read-cacheable endpoints.
