@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SAM · render.js self-tests</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #0a0b0d; color: #e8eaf0; }
+  h1 { font-size: 18px; margin-bottom: 20px; }
+  .test { border: 1px solid #2a2e3a; border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .test h2 { font-size: 13px; font-family: JetBrains Mono, monospace; margin-bottom: 8px; color: #8b8fa3; }
+  .pass { color: #34d399; }
+  .fail { color: #f87171; }
+  .detail { font-family: JetBrains Mono, monospace; font-size: 11px; color: #5c6070; white-space: pre-wrap; margin-top: 6px; }
+  #summary { font-size: 16px; font-weight: 600; margin: 20px 0; padding: 12px; border-radius: 8px; }
+  #summary.ok { background: rgba(52,211,153,0.12); color: #34d399; }
+  #summary.bad { background: rgba(248,113,113,0.12); color: #f87171; }
+  ul.items { list-style: none; padding: 0; border: 1px solid #2a2e3a; border-radius: 6px; background: #12141a; }
+  ul.items li { padding: 8px 12px; border-bottom: 1px solid #2a2e3a; }
+  ul.items li:last-child { border-bottom: none; }
+  ul.items li.selected { background: rgba(74,124,255,0.15); }
+</style>
+</head>
+<body>
+<h1>render.js · self-tests</h1>
+<div id="summary">running…</div>
+<div id="results"></div>
+
+<!-- Hidden test harness -->
+<div id="harness" style="position:absolute;left:-9999px;top:-9999px;">
+  <ul id="mount" class="items"></ul>
+</div>
+
+<script type="module">
+import { renderList, setText, setAttr, setClass } from '/js/render.js';
+
+const results = [];
+function test(name, fn) {
+  try {
+    fn();
+    results.push({ name, ok: true });
+  } catch (e) {
+    results.push({ name, ok: false, err: String(e.stack || e.message || e) });
+  }
+}
+function assertEq(a, b, msg) {
+  if (!Object.is(a, b)) throw new Error((msg || 'assertEq failed') + `: expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+}
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg || 'assertion failed');
+}
+
+const mount = document.getElementById('mount');
+const itemEl = (item) => {
+  const li = document.createElement('li');
+  li.textContent = item.text;
+  return li;
+};
+const rowOpts = {
+  key: (i) => i.id,
+  create: itemEl,
+  update: (el, item) => { setText(el, item.text); setClass(el, 'selected', !!item.selected); },
+};
+
+// ── Test 1 ──────────────────────────────────────────────────
+test('1: initial render creates correct nodes', () => {
+  mount.innerHTML = '';
+  const stats = renderList(mount, [{id:'a',text:'A'},{id:'b',text:'B'},{id:'c',text:'C'}], rowOpts);
+  assertEq(mount.children.length, 3, 'child count');
+  assertEq(mount.children[0].textContent, 'A');
+  assertEq(mount.children[2].textContent, 'C');
+  assertEq(stats.added, 3);
+  assertEq(stats.removed, 0);
+  assertEq(stats.moved, 0);
+});
+
+// ── Test 2 ──────────────────────────────────────────────────
+test('2: identical re-render preserves DOM node identity (no recreate)', () => {
+  mount.innerHTML = '';
+  renderList(mount, [{id:'a',text:'A'},{id:'b',text:'B'}], rowOpts);
+  const refA = mount.children[0];
+  const refB = mount.children[1];
+  const stats = renderList(mount, [{id:'a',text:'A'},{id:'b',text:'B'}], rowOpts);
+  assert(mount.children[0] === refA, 'A is same node');
+  assert(mount.children[1] === refB, 'B is same node');
+  assertEq(stats.added, 0);
+  assertEq(stats.removed, 0);
+});
+
+// ── Test 3 ──────────────────────────────────────────────────
+test('3: in-place text patch does not recreate node', () => {
+  mount.innerHTML = '';
+  renderList(mount, [{id:'a',text:'A'}], rowOpts);
+  const ref = mount.children[0];
+  renderList(mount, [{id:'a',text:'A-edited'}], rowOpts);
+  assert(mount.children[0] === ref, 'node identity preserved');
+  assertEq(mount.children[0].textContent, 'A-edited');
+});
+
+// ── Test 4 ──────────────────────────────────────────────────
+test('4: removed item disappears, surviving nodes preserved', () => {
+  mount.innerHTML = '';
+  renderList(mount, [{id:'a',text:'A'},{id:'b',text:'B'},{id:'c',text:'C'}], rowOpts);
+  const refA = mount.children[0];
+  const refC = mount.children[2];
+  const stats = renderList(mount, [{id:'a',text:'A'},{id:'c',text:'C'}], rowOpts);
+  assertEq(mount.children.length, 2);
+  assert(mount.children[0] === refA);
+  assert(mount.children[1] === refC);
+  assertEq(stats.removed, 1);
+});
+
+// ── Test 5 ──────────────────────────────────────────────────
+test('5: inserted item appears at correct position', () => {
+  mount.innerHTML = '';
+  renderList(mount, [{id:'a',text:'A'},{id:'c',text:'C'}], rowOpts);
+  const refA = mount.children[0];
+  const refC = mount.children[1];
+  renderList(mount, [{id:'a',text:'A'},{id:'b',text:'B'},{id:'c',text:'C'}], rowOpts);
+  assertEq(mount.children.length, 3);
+  assert(mount.children[0] === refA);
+  assertEq(mount.children[1].textContent, 'B');
+  assert(mount.children[2] === refC);
+});
+
+// ── Test 6 ──────────────────────────────────────────────────
+test('6: reorder preserves all nodes, counts moves', () => {
+  mount.innerHTML = '';
+  renderList(mount, [{id:'a',text:'A'},{id:'b',text:'B'},{id:'c',text:'C'}], rowOpts);
+  const refA = mount.children[0];
+  const refB = mount.children[1];
+  const refC = mount.children[2];
+  const stats = renderList(mount, [{id:'c',text:'C'},{id:'a',text:'A'},{id:'b',text:'B'}], rowOpts);
+  assertEq(mount.children.length, 3);
+  assert(mount.children[0] === refC);
+  assert(mount.children[1] === refA);
+  assert(mount.children[2] === refB);
+  assert(stats.moved >= 1, 'at least one move counted');
+});
+
+// ── Test 7 ──────────────────────────────────────────────────
+test('7: selected/class state applied via update() without recreate', () => {
+  mount.innerHTML = '';
+  renderList(mount, [{id:'a',text:'A',selected:false},{id:'b',text:'B',selected:false}], rowOpts);
+  const refA = mount.children[0];
+  renderList(mount, [{id:'a',text:'A',selected:true},{id:'b',text:'B',selected:false}], rowOpts);
+  assert(mount.children[0] === refA, 'node preserved through class change');
+  assert(mount.children[0].classList.contains('selected'), 'class applied');
+  assert(!mount.children[1].classList.contains('selected'), 'other row unaffected');
+});
+
+// ── Test 8 ──────────────────────────────────────────────────
+test('8: empty list clears all nodes', () => {
+  mount.innerHTML = '';
+  renderList(mount, [{id:'a',text:'A'},{id:'b',text:'B'}], rowOpts);
+  const stats = renderList(mount, [], rowOpts);
+  assertEq(mount.children.length, 0);
+  assertEq(stats.removed, 2);
+});
+
+// ── Test 9 ──────────────────────────────────────────────────
+test('9: numeric key is coerced to string and matched correctly', () => {
+  mount.innerHTML = '';
+  renderList(mount, [{id:1,text:'one'},{id:2,text:'two'}], rowOpts);
+  const refA = mount.children[0];
+  renderList(mount, [{id:1,text:'one'},{id:2,text:'two'}], rowOpts);
+  assert(mount.children[0] === refA, 'numeric key re-matched');
+});
+
+// ── Test 10 ─────────────────────────────────────────────────
+test('10: setText + setAttr + setClass are no-ops on matching values', () => {
+  const el = document.createElement('div');
+  el.textContent = 'hello';
+  el.setAttribute('data-x', '1');
+  el.classList.add('on');
+  // These should not cause DOM mutations (nothing observable to assert without
+  // a MutationObserver, but they must at least not throw and not change state).
+  setText(el, 'hello');
+  setAttr(el, 'data-x', '1');
+  setClass(el, 'on', true);
+  assertEq(el.textContent, 'hello');
+  assertEq(el.getAttribute('data-x'), '1');
+  assert(el.classList.contains('on'));
+});
+
+// ── Render report ───────────────────────────────────────────
+const resultsEl = document.getElementById('results');
+const summaryEl = document.getElementById('summary');
+let passed = 0, failed = 0;
+for (const r of results) {
+  const div = document.createElement('div');
+  div.className = 'test';
+  div.innerHTML = `<h2>${r.ok ? '<span class="pass">✓</span>' : '<span class="fail">✗</span>'} ${r.name}</h2>`;
+  if (!r.ok) {
+    const d = document.createElement('div');
+    d.className = 'detail';
+    d.textContent = r.err;
+    div.appendChild(d);
+    failed++;
+  } else {
+    passed++;
+  }
+  resultsEl.appendChild(div);
+}
+summaryEl.className = failed === 0 ? 'ok' : 'bad';
+summaryEl.textContent = `${passed}/${results.length} passed` + (failed ? `  ·  ${failed} failed` : '  ·  all green');
+</script>
+</body>
+</html>
