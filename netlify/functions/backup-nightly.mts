@@ -35,9 +35,8 @@ export default async (req: Request) => {
     return;
   }
 
-  const REPO_OWNER = "DavidHatami";
-  const REPO_NAME = "sam-ops";
-  const FILE_PATH = "backups/sam-data-backup.json";
+  // Note: backup destinations are inlined inside the pushToRepo() calls below
+  // (was previously REPO_OWNER/REPO_NAME constants — removed when going dual-repo).
 
   // ── 1. READ ALL BLOB STORES ──
   const backup: Record<string, any> = {
@@ -118,63 +117,102 @@ export default async (req: Request) => {
 
   console.log(`[BACKUP] Total backup: ${Math.round(backupSize / 1024)} KB`);
 
-  // ── 2. PUSH TO GITHUB ──
-  try {
-    // Check if file already exists (need SHA for update)
-    let existingSHA: string | null = null;
+  // ── 2. PUSH TO BOTH BACKUP REPOS (sam-ops primary, SAM-ops1 mirror) ──
+  // Why two repos: redundancy. If one repo gets accidentally deleted or its access
+  // is lost, the other survives. Both writes happen in parallel; if EITHER fails
+  // we still record the heartbeat as a success so long as the primary worked,
+  // but the failure is logged for diagnosis.
+
+  const now = new Date();
+  const dateStr = now.toISOString().split("T")[0];
+  const timeStr = now.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit" });
+  const commitMessage = `[SAM BACKUP] ${dateStr} ${timeStr} ET — ${Math.round(backupSize / 1024)} KB — ${backup._meta.stores.filter((s: any) => s.status === "ok").length}/${storeConfigs.length} stores`;
+  const fileContent = Buffer.from(JSON.stringify(backup, null, 2)).toString("base64");
+
+  async function pushToRepo(owner: string, repo: string, path: string): Promise<{ ok: boolean; sha?: string; error?: string }> {
     try {
-      const checkResp = await fetch(
-        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`,
-        { headers: { Authorization: `Bearer ${GITHUB_PAT}`, "User-Agent": "SAM-Backup" } }
+      // Check if file already exists (need SHA for update)
+      let existingSHA: string | null = null;
+      try {
+        const checkResp = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
+          { headers: { Authorization: `Bearer ${GITHUB_PAT}`, "User-Agent": "SAM-Backup" } }
+        );
+        if (checkResp.ok) {
+          const checkData = await checkResp.json();
+          existingSHA = checkData.sha;
+        }
+      } catch { /* file doesn't exist yet — that's fine */ }
+
+      const commitBody: Record<string, any> = {
+        message: commitMessage,
+        content: fileContent,
+        committer: { name: "SAM Chief of Staff", email: "admin@edupolicy.ai" },
+      };
+      if (existingSHA) commitBody.sha = existingSHA;
+
+      const pushResp = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${GITHUB_PAT}`,
+            "Content-Type": "application/json",
+            "User-Agent": "SAM-Backup",
+          },
+          body: JSON.stringify(commitBody),
+        }
       );
-      if (checkResp.ok) {
-        const checkData = await checkResp.json();
-        existingSHA = checkData.sha;
+
+      if (pushResp.ok) {
+        const data = await pushResp.json();
+        return { ok: true, sha: data.commit?.sha?.substring(0, 7) };
       }
-    } catch (e) { /* file doesn't exist yet — that's fine */ }
+      const errText = await pushResp.text();
+      return { ok: false, error: `HTTP ${pushResp.status}: ${errText.substring(0, 200)}` };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
 
-    // Create or update the file
-    const now = new Date();
-    const dateStr = now.toISOString().split("T")[0];
-    const timeStr = now.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit" });
+  try {
+    // Push to BOTH repos in parallel
+    const [primaryResult, mirrorResult] = await Promise.all([
+      pushToRepo("DavidHatami", "sam-ops", "backups/sam-data-backup.json"),
+      pushToRepo("DavidHatami", "SAM-ops1", "backups/sam-data-backup.json"),
+    ]);
 
-    const commitBody: Record<string, any> = {
-      message: `[SAM BACKUP] ${dateStr} ${timeStr} ET — ${Math.round(backupSize / 1024)} KB — ${backup._meta.stores.filter((s: any) => s.status === "ok").length}/${storeConfigs.length} stores`,
-      content: Buffer.from(JSON.stringify(backup, null, 2)).toString("base64"),
-      committer: {
-        name: "SAM Chief of Staff",
-        email: "admin@edupolicy.ai",
-      },
-    };
+    const elapsed = Date.now() - startTime;
 
-    if (existingSHA) {
-      commitBody.sha = existingSHA;
+    // Log each independently
+    if (primaryResult.ok) {
+      console.log(`[BACKUP] PRIMARY ✓ sam-ops — commit ${primaryResult.sha} — ${elapsed}ms`);
+    } else {
+      console.log(`[BACKUP] PRIMARY ✗ sam-ops failed: ${primaryResult.error}`);
+    }
+    if (mirrorResult.ok) {
+      console.log(`[BACKUP] MIRROR  ✓ SAM-ops1 — commit ${mirrorResult.sha}`);
+    } else {
+      console.log(`[BACKUP] MIRROR  ✗ SAM-ops1 failed: ${mirrorResult.error}`);
     }
 
-    const pushResp = await fetch(
-      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`,
-      {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${GITHUB_PAT}`,
-          "Content-Type": "application/json",
-          "User-Agent": "SAM-Backup",
-        },
-        body: JSON.stringify(commitBody),
-      }
-    );
+    // Determine overall outcome:
+    // - Both ok → green
+    // - Primary ok, mirror failed → green but log the mirror failure prominently
+    // - Primary failed → alarm (the mirror alone isn't enough; primary is canonical)
+    const overallOk = primaryResult.ok;
+    const partial = primaryResult.ok && !mirrorResult.ok;
 
-    if (pushResp.ok) {
-      const pushData = await pushResp.json();
-      const elapsed = Date.now() - startTime;
-      console.log(`[BACKUP] SUCCESS — Pushed to sam-ops/${FILE_PATH} — commit: ${pushData.commit?.sha?.substring(0, 7)} — ${elapsed}ms`);
-
-      // Write status blob so GET /api/backup reflects scheduled runs (not just manual ones).
+    if (overallOk) {
+      // Write status blob (driven off the primary commit info)
       try {
         const statusStore = getStore({ name: "sam-backup-status", consistency: "strong" });
         await statusStore.set("last", JSON.stringify({
           timestamp: new Date().toISOString(),
-          commit: pushData.commit?.sha?.substring(0, 7),
+          commit: primaryResult.sha,
+          mirrorCommit: mirrorResult.sha || null,
+          mirrorOk: mirrorResult.ok,
+          mirrorError: mirrorResult.error || null,
           sizeKB: Math.round(backupSize / 1024),
           stores: backup._meta.stores.length,
           elapsed: elapsed + "ms",
@@ -183,18 +221,18 @@ export default async (req: Request) => {
       } catch (statusErr) {
         console.log(`[BACKUP] Status blob write failed (non-fatal): ${statusErr}`);
       }
-      // Cron heartbeat — green
+      // Heartbeat: success even if mirror failed (primary is what matters)
       await writeHeartbeat("backup-nightly", {
         success: true,
         durationMs: elapsed,
+        ...(partial ? { error: `mirror failed but primary ok: ${mirrorResult.error}` } : {}),
       });
     } else {
-      const errText = await pushResp.text();
-      console.log(`[BACKUP] GITHUB ERROR: ${pushResp.status} — ${errText.substring(0, 200)}`);
+      // Primary failed — this is an alarm condition
       await writeHeartbeat("backup-nightly", {
         success: false,
-        durationMs: Date.now() - startTime,
-        error: `GitHub HTTP ${pushResp.status}: ${errText.substring(0, 200)}`,
+        durationMs: elapsed,
+        error: `primary push to sam-ops failed: ${primaryResult.error}${mirrorResult.ok ? " (mirror ok)" : ` (mirror also failed: ${mirrorResult.error})`}`,
       });
     }
   } catch (e) {

@@ -158,6 +158,23 @@ async function sendSmokeFailureAlert(results: CheckResult[], deployId: string | 
   const fails = results.filter((r) => r.status === "fail");
   if (fails.length === 0) return;
 
+  // Suppression: don't re-alert if we sent a failure email for the SAME set of failing
+  // endpoints in the last 10 minutes. During rapid deploy cycles (3 commits in 90s)
+  // the same regression would otherwise trigger N emails. Once is enough.
+  try {
+    const { getStore } = await import("@netlify/blobs");
+    const store = getStore({ name: "sam-smoke-test", consistency: "strong" });
+    const lastAlert = await store.get("_last_alert", { type: "json" }) as { at: string; failingEndpoints: string[] } | null;
+    if (lastAlert) {
+      const ageMs = Date.now() - new Date(lastAlert.at).getTime();
+      const sameSet = JSON.stringify([...lastAlert.failingEndpoints].sort()) === JSON.stringify(fails.map((f) => f.endpoint).sort());
+      if (sameSet && ageMs < 10 * 60 * 1000) {
+        console.log(`[SMOKE-TEST] Suppressing duplicate alert (same failures fired ${Math.round(ageMs/1000)}s ago)`);
+        return;
+      }
+    }
+  } catch {}
+
   const rows = fails
     .map((r) => `<tr>
       <td style="padding:8px 12px;border-bottom:1px solid #2a2a2a;font-family:monospace;font-size:12px;color:#fff;">${r.endpoint}</td>
@@ -198,6 +215,16 @@ async function sendSmokeFailureAlert(results: CheckResult[], deployId: string | 
       html,
     }),
   }).catch(() => {});
+
+  // Record this alert so the next-attempt suppression check can find it
+  try {
+    const { getStore } = await import("@netlify/blobs");
+    const store = getStore({ name: "sam-smoke-test", consistency: "strong" });
+    await store.setJSON("_last_alert", {
+      at: new Date().toISOString(),
+      failingEndpoints: fails.map((f) => f.endpoint),
+    });
+  } catch {}
 }
 
 async function persistRunReport(results: CheckResult[], deployId: string | null) {
