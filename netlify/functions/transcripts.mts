@@ -29,7 +29,7 @@ export default async (req: Request, context: Context) => {
     try {
       const limit = parseInt(url.searchParams.get("limit") || "20", 10);
       const summaries = await listMeetingSummaries(limit);
-      return json({ summaries, count: summaries.length }, 200);
+      return json({ summaries, count: summaries.length }, 200, true, 60);
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
@@ -40,7 +40,7 @@ export default async (req: Request, context: Context) => {
       const limit = parseInt(url.searchParams.get("limit") || "50", 10);
       const project = url.searchParams.get("project") || undefined;
       const decisions = await listDecisions(limit, project);
-      return json({ decisions, count: decisions.length }, 200);
+      return json({ decisions, count: decisions.length }, 200, true, 60);
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
@@ -49,11 +49,12 @@ export default async (req: Request, context: Context) => {
   return json({ error: "Not found", path }, 404);
 };
 
-function json(body: any, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+function json(body: any, status: number, cacheable = false, maxAge = 30) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cacheable && status === 200) {
+    headers["Cache-Control"] = `private, max-age=${maxAge}, stale-while-revalidate=${maxAge * 4}`;
+  }
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 export const config: Config = {

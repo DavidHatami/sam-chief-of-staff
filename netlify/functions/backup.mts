@@ -15,10 +15,14 @@ export default async (req: Request, context: Context) => {
 
   if (req.method === "GET") {
     // Return last backup info from a status blob
+    const cacheableHeaders = {
+      ...headers,
+      "Cache-Control": "private, max-age=60, stale-while-revalidate=300",
+    };
     try {
       const statusStore = getStore({ name: "sam-backup-status", consistency: "strong" });
       const status = await statusStore.get("last", { type: "json" });
-      return new Response(JSON.stringify({ lastBackup: status || null }), { headers });
+      return new Response(JSON.stringify({ lastBackup: status || null }), { headers: cacheableHeaders });
     } catch (e) {
       return new Response(JSON.stringify({ lastBackup: null }), { headers });
     }

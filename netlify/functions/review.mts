@@ -28,7 +28,7 @@ export default async (req: Request, context: Context) => {
       const store = getStore({ name: "sam-reviews", consistency: "strong" });
       const { blobs } = await store.list();
       const dates = blobs.map((b: any) => b.key).sort().reverse().slice(0, 52);
-      return json({ dates, count: blobs.length }, 200);
+      return json({ dates, count: blobs.length }, 200, true, 60);
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
@@ -41,7 +41,7 @@ export default async (req: Request, context: Context) => {
       const store = getStore({ name: "sam-reviews", consistency: "strong" });
       const data = await store.get(date, { type: "json" });
       if (!data) return json({ error: "Not found" }, 404);
-      return json(data, 200);
+      return json(data, 200, true, 600);  // archived reviews never change
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
@@ -50,11 +50,12 @@ export default async (req: Request, context: Context) => {
   return json({ error: "Not found", path }, 404);
 };
 
-function json(body: any, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+function json(body: any, status: number, cacheable = false, maxAge = 30) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cacheable && status === 200) {
+    headers["Cache-Control"] = `private, max-age=${maxAge}, stale-while-revalidate=${maxAge * 4}`;
+  }
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 export const config: Config = {

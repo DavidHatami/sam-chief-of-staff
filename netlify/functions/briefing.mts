@@ -36,7 +36,7 @@ export default async (req: Request, context: Context) => {
         .sort()
         .reverse()
         .slice(0, 30);
-      return json({ dates, count: blobs.length }, 200);
+      return json({ dates, count: blobs.length }, 200, true);
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
@@ -49,7 +49,7 @@ export default async (req: Request, context: Context) => {
       const store = getStore({ name: "sam-briefings", consistency: "strong" });
       const data = await store.get(date, { type: "json" });
       if (!data) return json({ error: "Not found" }, 404);
-      return json(data, 200);
+      return json(data, 200, true, 600);  // 10-min cache — archived briefings never change
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
@@ -140,11 +140,12 @@ export default async (req: Request, context: Context) => {
   return json({ error: "Not found", path }, 404);
 };
 
-function json(body: any, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+function json(body: any, status: number, cacheable = false, maxAge = 30) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cacheable && status === 200) {
+    headers["Cache-Control"] = `private, max-age=${maxAge}, stale-while-revalidate=${maxAge * 4}`;
+  }
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 /**

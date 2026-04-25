@@ -24,18 +24,19 @@ export default async (req: Request, context: Context) => {
 
   try {
     const result = await buildUnifiedInbox({ perAccount, filter });
-    return json(result, 200);
+    return json(result, 200, true);
   } catch (e: any) {
     console.error("[UNIFIED-INBOX] failed:", e);
     return json({ error: e.message }, 500);
   }
 };
 
-function json(body: any, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+function json(body: any, status: number, cacheable = false) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cacheable && status === 200) {
+    headers["Cache-Control"] = "private, max-age=30, stale-while-revalidate=120";
+  }
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 export const config: Config = {

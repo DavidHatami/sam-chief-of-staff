@@ -29,7 +29,7 @@ export default async (req: Request, context: Context) => {
   if (path === "/api/triage/pending" && req.method === "GET") {
     try {
       const pending = await listPendingTriage();
-      return json({ pending, count: pending.length }, 200);
+      return json({ pending, count: pending.length }, 200, true);
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
@@ -118,11 +118,15 @@ export default async (req: Request, context: Context) => {
   return json({ error: "Not found", path }, 404);
 };
 
-function json(body: any, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+function json(body: any, status: number, cacheable = false) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cacheable && status === 200) {
+    // Browser caches for 30s, then serves stale for 2 minutes while revalidating in background.
+    // Mutations (approve/dismiss/send/run) bypass this since they're POST.
+    // Page-tab switches within the same minute become instant.
+    headers["Cache-Control"] = "private, max-age=30, stale-while-revalidate=120";
+  }
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 export const config: Config = {
