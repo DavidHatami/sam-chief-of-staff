@@ -252,6 +252,28 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
 
   /* Hide drag handles on mobile */
   #cal-vdrag,#task-vdrag,#ai-vdrag,#events-vdrag{display:none!important;}
+
+  /* ── PHASE 1-5 TAB MOBILE ADJUSTMENTS ── */
+  /* Triage / Conflicts / Unified / Reviews / Transcripts / Briefings cards */
+  .tr-card,.cf-card{padding:10px 12px!important;}
+  .tr-card>div:first-child,.cf-card>div:first-child{flex-wrap:wrap!important;gap:6px!important;}
+  /* Filter pills wrap properly */
+  #triage-pills,#unified-filters,#briefings-pills,#reviews-pills{gap:5px!important;}
+  #triage-pills button,#unified-filters button,#briefings-pills button,#reviews-pills button{font-size:10px!important;padding:4px 9px!important;}
+  /* SAM Status card on dashboard — tighter on phones */
+  #sam-status-rows>div{padding:8px 8px!important;font-size:11px!important;gap:8px!important;}
+  #sam-status-rows>div span:nth-child(2){min-width:55px!important;font-size:11px!important;}
+  /* Email pagination Load Older button */
+  #email-pagination button{font-size:10px!important;padding:7px 10px!important;}
+  /* Briefings/Reviews content prose readable on phone */
+  #briefings-content,#reviews-content{padding:14px 16px!important;}
+  #briefings-content h1,#reviews-content h1{font-size:18px!important;}
+  #briefings-content h2,#reviews-content h2{font-size:13px!important;}
+  /* Transcripts tab buttons */
+  #tx-tab-summaries,#tx-tab-decisions{font-size:10px!important;padding:5px 10px!important;}
+  /* Unified inbox per-message rows */
+  #unified-list>div{padding:9px 10px!important;}
+  /* Send Reply confirm dialog on mobile won't fit massive previews — already truncated to 200ch in JS */
 }
 
 /* ── SMALL MOBILE (under 480px) ── */
@@ -269,6 +291,21 @@ button:active,.ti-btn:active,.etb-f:active{transform:scale(0.97);opacity:0.85;}
   .ce .ce-details{font-size:13px!important;}
   .ce .ce-action{padding:10px 18px!important;font-size:13px!important;width:100%;text-align:center;}
   .cdh{font-size:16px!important;margin:24px 0 14px!important;}
+
+  /* PHASE 1-5 TAB SMALL-PHONE ADJUSTMENTS */
+  /* Triage/Conflicts cards: stack action buttons */
+  .tr-card>div:first-child button,.cf-card>div:first-child button{flex:1 1 auto;min-width:0;font-size:9px!important;padding:4px 7px!important;}
+  /* SAM Status row arrows take less space */
+  #sam-status-rows>div>span:last-child{display:none;}
+  /* Briefings date pills go to two lines */
+  #briefings-pills,#reviews-pills{gap:4px!important;}
+  #briefings-pills button,#reviews-pills button{font-size:9px!important;padding:4px 8px!important;}
+  /* Filter pills more compact */
+  #triage-pills button,#unified-filters button{font-size:9px!important;padding:3px 8px!important;}
+  /* Unified inbox: hide date column on tiny phones, keep account icon + sender + subject */
+  #unified-list>div>div:nth-child(3) span:last-child{display:none;}
+  /* Generate Now / Re-run buttons smaller */
+  #triage-run-btn,#conflicts-run-btn,#reviews-meta+button{font-size:9px!important;padding:4px 8px!important;}
 }
 </style>
 </head>
