@@ -2,6 +2,7 @@ import type { Context, Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 import { embedText, topKSimilar, type TurnEmbedding } from "../lib/embeddings.ts";
 import { knowledgeToContext, EMPTY_KNOWLEDGE, type Knowledge } from "../lib/memory-extract.ts";
+import { getAnthropicTools, executeTool, type ToolContext } from "../lib/sam-tools.ts";
 
 const BASE_PROMPT = `You are SAM (Secret Agent Man), Dr. David Hatami's personal AI Chief of Staff.
 
@@ -41,7 +42,20 @@ When David tells you something fresh and there's no matching memory: just acknow
 
 When David tells you something that DOES match a memory section: reference the SPECIFIC stored fact ("Yeah — STANDING KNOWLEDGE shows Janet runs HCC academic affairs, May 15th senate presentation, Tuesday afternoon preference. What's changed?").
 
-When David tells you something that contradicts what's in a memory section: surface the contradiction explicitly ("Wait — I had Janet at HCC, but you're now saying GCSC. Which is current?").`;
+When David tells you something that contradicts what's in a memory section: surface the contradiction explicitly ("Wait — I had Janet at HCC, but you're now saying GCSC. Which is current?").
+
+YOUR CAPABILITIES (TOOLS)
+You have actual tools available — not just for talking, but for DOING. The system passes a tools list on every request; check what's there. Common ones: create_task, create_zoom_meeting, create_calendar_event, send_email, get_recent_emails, get_calendar_events, search_chat_history, add_to_knowledge, list_tasks, update_task, delete_task, trigger_briefing_now, trigger_triage_now, trigger_conflict_hunt, get_current_time.
+
+PRINCIPLES FOR TOOL USE:
+- When David asks you to DO something (set up a meeting, send an email, add a task), USE THE TOOL. Don't just describe what you would do, don't draft and ask permission, don't suggest he "open Gmail" — execute.
+- Chain tools when needed. "Set up a Zoom with Janet next Tuesday at 2pm and email her the link" = call get_current_time to ground "next Tuesday" → call create_zoom_meeting → call send_email with the join link → confirm.
+- BEFORE scheduling anything time-bound, call get_current_time so "next Tuesday" or "tomorrow" resolves correctly. Models hallucinate dates if not grounded.
+- BEFORE sending an email or creating a calendar invite to someone, check standing knowledge for that person. If you don't know their email address, ASK rather than fabricating one.
+- AFTER successful tool calls, briefly state what you did and the result. Don't perform — "Done. Zoom set for Tuesday April 28 at 2:00 PM ET, invite sent to janet@hcc.edu, join link in the calendar event."
+- IF a tool call fails, surface the actual error verbatim, don't pretend it worked. The system shows you the real result.
+- IF you're unsure which calendar/account/email-sending-route to use, default to: M365 calendar for client meetings, Resend for outbound to non-edupolicy.ai recipients, Gmail for personal.
+- DO NOT call tools just to make David feel responded-to. If a question doesn't require an action, just answer.`;
 
 // ── PERSIST CHAT TURN ──
 // Best-effort write — never throws, never blocks the response. Caps retained
@@ -259,7 +273,11 @@ export default async (req: Request, context: Context) => {
         );
       }
 
-      const messages = [];
+      // Build initial messages: history + current user prompt.
+      // History entries may have come from chat-history blob (string content)
+      // or from prior tool-use turns (where assistant content is an array).
+      // The Anthropic API tolerates string OR array content per message.
+      const messages: any[] = [];
       if (effectiveHistory && effectiveHistory.length > 0) {
         effectiveHistory.forEach((h: { role: string; content: string }) => {
           messages.push({ role: h.role, content: h.content });
@@ -267,47 +285,145 @@ export default async (req: Request, context: Context) => {
       }
       messages.push({ role: "user", content: prompt });
 
-      // 22s ceiling to stay well under Netlify's 26s function budget.
-      // Without this, a slow API call propagates as a raw 502 instead of a graceful error.
-      const claudeAbort = new AbortController();
-      const claudeTimeout = setTimeout(() => claudeAbort.abort(), 22000);
-      let resp: Response;
-      try {
-        resp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "x-api-key": ANTHROPIC_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "claude-opus-4-6",
-            max_tokens: 4096,
-            system: SYSTEM_PROMPT,
-            messages,
-          }),
-          signal: claudeAbort.signal,
-        });
-      } catch (e: any) {
+      // Build tool context: anchor URL is the current request's origin so the
+      // tools can call internal endpoints back through the same site
+      const reqUrl = new URL(req.url);
+      const toolCtx: ToolContext = {
+        siteOrigin: `${reqUrl.protocol}//${reqUrl.host}`,
+      };
+      const tools = getAnthropicTools();
+
+      // Tool-use multi-turn loop. Two budget guardrails:
+      //   1. MAX_ITERATIONS = hard cap on round-trips (prevents infinite ping-pong)
+      //   2. OVERALL_BUDGET_MS = real-time wall-clock limit across the whole loop
+      //      (Netlify functions hard-stop at ~26s; we leave 2s slack for response shipping)
+      // Most multi-step requests resolve in 1-3 iterations; the cap exists for
+      // pathological cases. The wall-clock budget is what actually saves us
+      // from hitting the function timeout on a slow tool chain.
+      const MAX_ITERATIONS = 5;
+      const OVERALL_BUDGET_MS = 24000;
+      const PER_CALL_TIMEOUT_MS = 12000;
+      const loopStartedAt = Date.now();
+      const toolCallSummary: Array<{ name: string; input: any; result: any }> = [];
+      let finalReply = "";
+      let lastError: string | null = null;
+      let timedOutOfBudget = false;
+
+      for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+        const elapsed = Date.now() - loopStartedAt;
+        if (elapsed > OVERALL_BUDGET_MS - 1500) {
+          // Not enough time left for another round-trip. Exit loop and let
+          // the post-loop fallback synthesize a reply from what we have.
+          timedOutOfBudget = true;
+          break;
+        }
+        // Per-call timeout shrinks if we're running short on overall budget
+        const remaining = OVERALL_BUDGET_MS - elapsed;
+        const callTimeout = Math.min(PER_CALL_TIMEOUT_MS, remaining - 500);
+        const claudeAbort = new AbortController();
+        const claudeTimeout = setTimeout(() => claudeAbort.abort(), callTimeout);
+        let resp: Response;
+        try {
+          resp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "x-api-key": ANTHROPIC_KEY,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "claude-opus-4-6",
+              max_tokens: 4096,
+              system: SYSTEM_PROMPT,
+              tools,
+              messages,
+            }),
+            signal: claudeAbort.signal,
+          });
+        } catch (e: any) {
+          clearTimeout(claudeTimeout);
+          const timedOut = e?.name === "AbortError";
+          lastError = timedOut ? "Claude took too long to respond." : "Claude request failed: " + String(e);
+          break;
+        }
         clearTimeout(claudeTimeout);
-        const timedOut = e?.name === "AbortError";
-        return new Response(
-          JSON.stringify({ reply: timedOut ? "Claude took too long to respond. Try again or switch models." : "Claude request failed: " + String(e), model: "claude", error: true }),
-          { status: timedOut ? 504 : 500, headers: { "Content-Type": "application/json" } }
-        );
+
+        if (!resp.ok) {
+          const errText = (await resp.text()).substring(0, 300);
+          lastError = `Anthropic API HTTP ${resp.status}: ${errText}`;
+          break;
+        }
+
+        const data = await resp.json();
+        const content = data.content || [];
+        const stopReason = data.stop_reason;
+
+        // Find tool_use blocks vs text blocks
+        const toolUseBlocks = content.filter((b: any) => b.type === "tool_use");
+        const textBlocks = content.filter((b: any) => b.type === "text");
+        const textPiece = textBlocks.map((b: any) => b.text || "").join("");
+
+        if (stopReason === "tool_use" && toolUseBlocks.length > 0) {
+          // Add the assistant's tool_use turn to the conversation
+          messages.push({ role: "assistant", content });
+
+          // Execute every tool_use block in this turn (in parallel — the
+          // model is free to ask for several independent actions at once)
+          const toolResults = await Promise.all(
+            toolUseBlocks.map(async (tu: any) => {
+              const result = await executeTool(tu.name, tu.input, toolCtx);
+              toolCallSummary.push({ name: tu.name, input: tu.input, result });
+              return {
+                type: "tool_result",
+                tool_use_id: tu.id,
+                content: JSON.stringify(result).substring(0, 8000),  // cap to keep context manageable
+                ...(result?.error ? { is_error: true } : {}),
+              };
+            })
+          );
+          messages.push({ role: "user", content: toolResults });
+          // Loop again — Claude will see the tool results and either call
+          // more tools or wrap up with a text reply
+          continue;
+        }
+
+        // Plain text reply (no further tool use) — we're done
+        finalReply = textPiece || data.error?.message || "No response from Claude.";
+        break;
       }
-      clearTimeout(claudeTimeout);
 
-      const data = await resp.json();
-      const reply =
-        data.content
-          ?.map((b: { type: string; text?: string }) =>
-            b.type === "text" ? b.text : ""
-          )
-          .join("") || data.error?.message || "No response from Claude.";
+      if (!finalReply) {
+        if (timedOutOfBudget) {
+          finalReply = toolCallSummary.length > 0
+            ? `Ran out of time mid-chain. Got through ${toolCallSummary.length} tool call${toolCallSummary.length === 1 ? "" : "s"} (${toolCallSummary.map(t => `${t.name}${t.result?.error ? "→error" : "→ok"}`).join(", ")}). Ask again to finish.`
+            : "Ran out of time before the model could decide what to do. Try a more focused request.";
+        } else {
+          finalReply = lastError
+            ? lastError
+            : `Reached the ${MAX_ITERATIONS}-iteration cap without a final answer. Last tool calls: ${toolCallSummary.map(t => t.name).join(", ") || "(none)"}.`;
+        }
+      }
 
-      if (shouldPersist) await persistTurn(prompt, reply, "claude");
-      return new Response(JSON.stringify({ reply, model: "claude" }), {
+      // Persist: store the original prompt + final reply (NOT the intermediate
+      // tool calls — those are operational detail, not durable knowledge).
+      // The toolCallSummary is returned to the frontend so it can render
+      // a "SAM did N things" badge.
+      if (shouldPersist) await persistTurn(prompt, finalReply, "claude");
+
+      return new Response(JSON.stringify({
+        reply: finalReply,
+        model: "claude",
+        toolCalls: toolCallSummary.length > 0
+          ? toolCallSummary.map((t) => ({
+              name: t.name,
+              input: t.input,
+              ok: !t.result?.error,
+              error: t.result?.error || null,
+              // Surface a snippet so the UI can show "Meeting created — link: https://..."
+              summary: typeof t.result === "object" ? JSON.stringify(t.result).substring(0, 400) : String(t.result),
+            }))
+          : undefined,
+      }), {
         headers: { "Content-Type": "application/json" },
       });
     }

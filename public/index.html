@@ -478,6 +478,19 @@ function samSignOut(){
       <div class="eld" style="padding:8px 0;font-size:12px;">Loading memory...</div>
     </div>
   </div>
+  <!-- ANTICIPATIONS — proactive nudges synthesized from calendar+tasks+inbox+memory -->
+  <div class="card" id="sam-anticipations-card" style="margin-top:0;padding:10px 14px;">
+    <div class="ch" style="margin-bottom:6px;">
+      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🔮 What SAM thinks you should know today<span id="sam-anticip-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+      <div style="display:flex;gap:6px;">
+        <span class="badge" style="cursor:pointer;font-size:9px;" onclick="generateAnticipations(this)" id="anticip-gen-btn" title="Build today's anticipations now">GENERATE</span>
+        <span class="badge" style="cursor:pointer;font-size:9px;" onclick="loadAnticipations(true)">REFRESH</span>
+      </div>
+    </div>
+    <div id="sam-anticip-rows" style="display:flex;flex-direction:column;gap:4px;">
+      <div class="eld" style="padding:8px 0;font-size:12px;">Loading anticipations...</div>
+    </div>
+  </div>
   <!-- SAM DIALOGUE BOX -->
   <div class="card" style="margin-top:0;">
     <div class="ch">
@@ -1223,7 +1236,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();loadCredHealth();loadSmokeTest();loadSamMemory();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();loadCredHealth();loadSmokeTest();loadSamMemory();loadAnticipations();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1901,6 +1914,97 @@ async function distillSamMemory(btn){
     btn.textContent=orig;
     btn.style.opacity='1';
     samMemoryState.distilling=false;
+  }
+}
+
+// ── ANTICIPATIONS — proactive nudges from calendar+tasks+inbox+memory ──
+let anticipState={loaded:false,loading:false,generating:false,lastLoad:0};
+async function loadAnticipations(forceRefresh){
+  if(anticipState.loading)return;
+  if(anticipState.loaded&&!forceRefresh&&Date.now()-anticipState.lastLoad<60000)return;
+  anticipState.loading=true;
+  const rows=document.getElementById('sam-anticip-rows');
+  if(!anticipState.loaded)rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">Loading anticipations...</div>';
+  try{
+    const r=await fetch('/api/anticipations?cb='+Date.now());
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    anticipState.loaded=true;anticipState.lastLoad=Date.now();
+    renderAnticipations(d);
+  }catch(e){
+    rows.innerHTML='<div class="eld" style="padding:8px 0;color:var(--red);font-size:12px;">Anticipations load failed: '+esc((e.message||e)+'')+'</div>';
+  }finally{anticipState.loading=false;}
+}
+function renderAnticipations(set){
+  const meta=document.getElementById('sam-anticip-meta');
+  const rows=document.getElementById('sam-anticip-rows');
+  const list=set?.anticipations||[];
+  const active=list.filter(a=>!a.dismissed);
+  meta.innerHTML=set?.generatedAt
+    ?'· '+active.length+' active'+(list.length-active.length>0?' · '+(list.length-active.length)+' dismissed':'')+' · for '+(set.forDate||'today')
+    :'· not generated yet';
+  if(list.length===0){
+    rows.innerHTML='<div class="eld" style="padding:8px 0;font-size:12px;">No anticipations yet. The daily cron runs at 11 UTC (7 AM ET). Click GENERATE to run it now.</div>';
+    return;
+  }
+  const priColor={high:'var(--red)',medium:'#f59e0b',low:'var(--text-muted)'};
+  const catIcon={meeting:'📅',email:'📧',task:'📌',deadline:'⏰','follow-up':'↪️',insight:'💡'};
+  let html='';
+  for(const a of active){
+    const icon=catIcon[a.category]||'•';
+    const color=priColor[a.priority]||'var(--text)';
+    html+='<div style="padding:8px 10px;border-radius:6px;background:rgba(255,255,255,0.02);border-left:3px solid '+color+';margin-bottom:3px;">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">';
+    html+='<div style="flex:1;min-width:0;">';
+    html+='<div style="font-size:13px;font-weight:600;color:var(--text);line-height:1.4;">'+icon+' '+esc(a.title)+'</div>';
+    html+='<div style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-top:3px;">'+esc(a.reason)+'</div>';
+    if(a.suggestedAction){
+      html+='<div style="font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;">→ '+esc(a.suggestedAction)+'</div>';
+    }
+    html+='</div>';
+    html+='<span style="cursor:pointer;font-size:10px;color:var(--text-muted);padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.05);" onclick="dismissAnticipation(\''+esc(a.id)+'\',this)" title="Dismiss">✕</span>';
+    html+='</div></div>';
+  }
+  if(active.length===0){
+    html='<div class="eld" style="padding:8px 0;font-size:12px;">All anticipations dismissed for today. Click GENERATE to refresh.</div>';
+  }
+  rows.innerHTML=html;
+}
+async function dismissAnticipation(id,btn){
+  try{
+    btn.style.opacity='0.4';
+    const r=await fetch('/api/anticipations/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({dismissed:true})});
+    if(r.ok){
+      anticipState.lastLoad=0;
+      await loadAnticipations(true);
+    }
+  }catch(e){btn.style.opacity='1';}
+}
+async function generateAnticipations(btn){
+  if(anticipState.generating)return;
+  anticipState.generating=true;
+  const orig=btn.textContent;
+  btn.textContent='THINKING...';
+  btn.style.opacity='0.6';
+  try{
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),60000);
+    const r=await fetch('/api/anticipations/generate',{method:'POST',signal:ctrl.signal});
+    clearTimeout(timer);
+    const d=await r.json();
+    if(d.ok){
+      if(typeof showToast==='function')showToast('Anticipations generated · '+(d.count||0)+' nudges','ok');
+      anticipState.lastLoad=0;
+      await loadAnticipations(true);
+    }else{
+      if(typeof showToast==='function')showToast('Generate failed: '+(d.error||'unknown'),'err');
+    }
+  }catch(e){
+    if(typeof showToast==='function')showToast('Generate failed: '+(e.message||e).slice(0,160),'err');
+  }finally{
+    btn.textContent=orig;
+    btn.style.opacity='1';
+    anticipState.generating=false;
   }
 }
 
@@ -3123,7 +3227,31 @@ async function sendSAM(){
     const typing=document.getElementById('sam-typing');
     if(typing){
       const formatted=reply.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');
-      typing.innerHTML=`<div class="av" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);">S</div><div class="bubble" style="font-size:13px;line-height:1.6;">${formatted}</div>`;
+      // Render tool-call badges if SAM used any tools to fulfill the request.
+      // Each badge shows the tool name + ok/error status. Click expands the input/result for transparency.
+      let toolCallsHtml='';
+      if(Array.isArray(d.toolCalls) && d.toolCalls.length>0){
+        const badges=d.toolCalls.map((tc,idx)=>{
+          const ok=tc.ok!==false&&!tc.error;
+          const icon=ok?'✓':'✗';
+          const color=ok?'var(--green)':'var(--red)';
+          const detailsId=`tc-${Date.now()}-${idx}`;
+          const inputStr=tc.input?JSON.stringify(tc.input).substring(0,300):'';
+          const summaryStr=tc.summary?String(tc.summary).substring(0,400):'';
+          const errStr=tc.error?String(tc.error).substring(0,300):'';
+          return `<div style="margin:2px 0;font-size:11px;font-family:var(--mono);color:var(--text-muted);">
+            <span style="cursor:pointer;" onclick="document.getElementById('${detailsId}').style.display=document.getElementById('${detailsId}').style.display==='none'?'block':'none';">
+              🔧 <b style="color:var(--text);">${esc(tc.name)}</b> <span style="color:${color};">${icon}</span> ${ok?'':'<span style="color:var(--red);">'+esc(errStr).substring(0,80)+'</span>'}
+            </span>
+            <div id="${detailsId}" style="display:none;margin:4px 0 4px 16px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:4px;font-size:10px;line-height:1.5;">
+              <div style="color:var(--text-muted);">in:</div><div style="color:var(--text-dim);word-break:break-all;">${esc(inputStr)}</div>
+              ${ok&&summaryStr?`<div style="color:var(--text-muted);margin-top:4px;">out:</div><div style="color:var(--text-dim);word-break:break-all;">${esc(summaryStr)}</div>`:''}
+            </div>
+          </div>`;
+        }).join('');
+        toolCallsHtml=`<div style="margin-bottom:6px;padding:6px 8px;background:rgba(74,124,255,0.05);border-left:2px solid var(--accent);border-radius:4px;">${badges}</div>`;
+      }
+      typing.innerHTML=`<div class="av" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);">S</div><div class="bubble" style="font-size:13px;line-height:1.6;">${toolCallsHtml}${formatted}</div>`;
       typing.removeAttribute('id');
     }
   }catch(e){
@@ -6316,6 +6444,7 @@ loadCredHealth();
 loadSmokeTest();
 loadSamHistory();
 loadSamMemory();
+loadAnticipations();
 
 // ── PREFETCH WARMUP ──
 // On dashboard load, fire small parallel requests against the read-cacheable endpoints.
