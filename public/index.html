@@ -1375,22 +1375,45 @@ async function runBackupNow(){
   }
 }
 // ── PHASE 1.1 MORNING BRIEFING — manual trigger from dashboard ──
+// v2: client-side timeout via AbortController so the button never hangs
+// indefinitely if the function exceeds Netlify's 26s budget or the edge
+// drops the connection silently. Always reverts state in a finally block.
 async function runBriefingNow(btn){
   const orig=btn.textContent;
-  btn.disabled=true;btn.textContent='⏳ Synthesizing...';btn.style.opacity='0.7';
+  btn.disabled=true;btn.textContent='⏳ Synthesizing...';btn.style.opacity='0.7';btn.style.color='';
   const t0=Date.now();
+  // 35s client-side ceiling. Server budget is 26s; give edge + return trip 9s headroom.
+  const ctrl=new AbortController();
+  const killTimer=setTimeout(()=>ctrl.abort(),35000);
+  let finalText=orig;let finalColor='';let resetMs=4000;
   try{
-    const r=await fetch('/api/briefing/now',{method:'POST'});
-    const d=await r.json();
-    const elapsed=((Date.now()-t0)/1000).toFixed(1);
-    if(!r.ok){
-      btn.textContent='✗ Failed';btn.style.color='var(--red)';
-      showToast('Briefing failed: '+(d.error||'HTTP '+r.status).slice(0,160),'err');
-      setTimeout(()=>{btn.textContent=orig;btn.style.color='';btn.style.opacity='';btn.disabled=false;},4000);
+    let r;
+    try{
+      r=await fetch('/api/briefing/now',{method:'POST',signal:ctrl.signal});
+    }catch(netErr){
+      const msg=netErr&&netErr.name==='AbortError'
+        ?'Request timed out after 35s — function likely exceeded Netlify\'s 26s budget. Check function logs.'
+        :('Network error: '+((netErr&&netErr.message)||netErr));
+      finalText='✗ Timed out';finalColor='var(--red)';
+      showToast('Briefing: '+msg.slice(0,200),'err');
       return;
     }
-    btn.textContent='✓ Sent ('+elapsed+'s)';btn.style.color='var(--green)';
-    showToast('Briefing for '+d.key+' delivered to admin@edupolicy.ai · '+elapsed+'s','ok');
+    const elapsed=((Date.now()-t0)/1000).toFixed(1);
+    // Parse the body defensively — Netlify edge sometimes returns plaintext on 5xx
+    const ct=(r.headers.get('content-type')||'').toLowerCase();
+    let d={};let bodyText='';
+    try{
+      if(ct.includes('application/json')){d=await r.json();}
+      else{bodyText=await r.text();try{d=JSON.parse(bodyText);}catch{d={};}}
+    }catch{d={};}
+    if(!r.ok){
+      const errMsg=(d&&d.error)||bodyText||('HTTP '+r.status);
+      finalText='✗ Failed ('+r.status+')';finalColor='var(--red)';
+      showToast('Briefing failed: '+String(errMsg).slice(0,200),'err');
+      return;
+    }
+    finalText='✓ Sent ('+elapsed+'s)';finalColor='var(--green)';resetMs=5000;
+    showToast('Briefing for '+(d.key||'today')+' delivered to admin@edupolicy.ai · '+elapsed+'s','ok');
     // Drop the preview into the SAM dialogue so it's visible without leaving the dashboard
     const msgs=document.getElementById('sam-msgs');
     if(msgs){
@@ -1405,11 +1428,14 @@ async function runBriefingNow(btn){
       msgs.appendChild(div);
       msgs.scrollTop=msgs.scrollHeight;
     }
-    setTimeout(()=>{btn.textContent=orig;btn.style.color='';btn.style.opacity='';btn.disabled=false;},5000);
   }catch(e){
-    btn.textContent='✗ Network error';btn.style.color='var(--red)';
-    showToast('Briefing network error: '+(e.message||e).slice(0,160),'err');
-    setTimeout(()=>{btn.textContent=orig;btn.style.color='';btn.style.opacity='';btn.disabled=false;},4000);
+    // Last-resort safety net — anything that escaped the inner handlers
+    finalText='✗ Error';finalColor='var(--red)';
+    showToast('Briefing error: '+((e&&e.message)||e||'unknown').toString().slice(0,200),'err');
+  }finally{
+    clearTimeout(killTimer);
+    btn.textContent=finalText;btn.style.color=finalColor;
+    setTimeout(()=>{btn.textContent=orig;btn.style.color='';btn.style.opacity='';btn.disabled=false;},resetMs);
   }
 }
 async function checkBackupStatus(){
