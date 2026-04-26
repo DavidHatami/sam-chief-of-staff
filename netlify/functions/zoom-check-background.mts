@@ -213,7 +213,7 @@ async function zoomCheckImpl(req: Request) {
           method: "POST",
           headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "claude-opus-4-6",
+            model: "claude-opus-4-7",
             max_tokens: 2000,
             system: "You extract action items from meeting transcripts. Return ONLY valid JSON, no markdown fences, no preamble.",
             messages: [{ role: "user", content: extractPrompt }],

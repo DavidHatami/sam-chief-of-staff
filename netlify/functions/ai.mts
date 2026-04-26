@@ -78,7 +78,7 @@ async function persistTurn(userPrompt: string, assistantReply: string, model: st
     turns.push({ role: "assistant", content: assistantReply, at, model });
     // Cap at last N turns. Older turns are dropped — keep this generous so we
     // don't lose useful long-term context, but bounded so blob stays under 5MB.
-    const HISTORY_MAX_RETAINED_TURNS = 400;
+    const HISTORY_MAX_RETAINED_TURNS = 600;
     const capped = turns.length > HISTORY_MAX_RETAINED_TURNS
       ? turns.slice(turns.length - HISTORY_MAX_RETAINED_TURNS)
       : turns;
@@ -143,9 +143,9 @@ export default async (req: Request, context: Context) => {
     //   1. RECENT — last 10 turns verbatim, for short-term coherence
     //   2. RELEVANT — top 3 semantically-similar past turns NOT in the recent
     //      window, for "I asked about Patricia 2 months ago" recall
-    const RECENT_TURNS = 10;
-    const SEMANTIC_TOP_K = 3;
-    const SEMANTIC_MIN_SCORE = 0.35;
+    const RECENT_TURNS = 30;
+    const SEMANTIC_TOP_K = 6;
+    const SEMANTIC_MIN_SCORE = 0.28;
     let effectiveHistory: Array<{ role: string; content: string }> = [];
     let semanticContext = "";
     let shouldPersist = false;
@@ -333,7 +333,7 @@ export default async (req: Request, context: Context) => {
               "content-type": "application/json",
             },
             body: JSON.stringify({
-              model: "claude-opus-4-6",
+              model: "claude-opus-4-7",
               max_tokens: 4096,
               system: SYSTEM_PROMPT,
               tools,
@@ -577,7 +577,7 @@ export default async (req: Request, context: Context) => {
         promise: fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-opus-4-6", max_tokens: 1024, system: SYSTEM_PROMPT, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-opus-4-7", max_tokens: 1024, system: SYSTEM_PROMPT, messages: [{ role: "user", content: prompt }] }),
           signal: modelAbort.signal,
         }),
       });

@@ -126,7 +126,7 @@ RULES:
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-7",
         max_tokens: 2048,
         messages: [{ role: "user", content: extractionPrompt }],
       }),
