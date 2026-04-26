@@ -31,16 +31,37 @@ interface ModelPricing {
 }
 
 const PRICING: Record<string, ModelPricing> = {
-  // Anthropic — TODO confirm exact rates from console.anthropic.com/billing
-  // Setting all to 0 until verified to avoid fabricated cost numbers.
-  "claude-opus-4-7": { inputCentsPer1M: 0, outputCentsPer1M: 0 },
-  "claude-opus-4-6": { inputCentsPer1M: 0, outputCentsPer1M: 0 },
-  "claude-sonnet-4-6": { inputCentsPer1M: 0, outputCentsPer1M: 0 },
-  "claude-haiku-4-5-20251001": { inputCentsPer1M: 0, outputCentsPer1M: 0 },
-  // OpenAI — TODO confirm from platform.openai.com/account/billing
-  "gpt-5.4": { inputCentsPer1M: 0, outputCentsPer1M: 0 },
-  // Google — TODO confirm from Google AI Studio billing
-  "gemini-2.5-flash": { inputCentsPer1M: 0, outputCentsPer1M: 0 },
+  // ── ANTHROPIC ──
+  // Sources verified Apr 26, 2026:
+  //   Opus 4.7: $5/M input, $25/M output, $0.50/M cache read
+  //     (https://platform.claude.com/docs/en/about-claude/pricing —
+  //      "Prices are unchanged from Opus 4.6")
+  //   Opus 4.6: $5/M input, $25/M output (same tier as 4.7)
+  //   Sonnet 4.6: $3/M input, $15/M output
+  //     (https://platform.claude.com/docs/en/about-claude/models/migration-guide
+  //      — "Sonnet 4.6 pricing is $3 per million input tokens, $15 per million output tokens")
+  //   Haiku 4.5: $1/M input, $5/M output
+  //     (same migration guide — "Haiku 4.5 pricing is $1 per million input tokens, $5 per million output tokens")
+  //   Cache reads across all Anthropic models: 10% of input rate (standard prompt-caching policy).
+  // Cents per 1M tokens — multiply by 100 from dollar rates.
+  "claude-opus-4-7": { inputCentsPer1M: 500, outputCentsPer1M: 2500, cachedInputCentsPer1M: 50 },
+  "claude-opus-4-6": { inputCentsPer1M: 500, outputCentsPer1M: 2500, cachedInputCentsPer1M: 50 },
+  "claude-sonnet-4-6": { inputCentsPer1M: 300, outputCentsPer1M: 1500, cachedInputCentsPer1M: 30 },
+  "claude-haiku-4-5-20251001": { inputCentsPer1M: 100, outputCentsPer1M: 500, cachedInputCentsPer1M: 10 },
+
+  // ── OPENAI ──
+  // GPT-5.4 standard: $2.50/M input, $15/M output
+  //   (https://openrouter.ai/openai/gpt-5.4 mirrors openai.com/api/pricing —
+  //    "$2.50 per million input tokens, $15 per million output tokens")
+  // Cached input on OpenAI = ~10% of standard input ($0.25/M).
+  "gpt-5.4": { inputCentsPer1M: 250, outputCentsPer1M: 1500, cachedInputCentsPer1M: 25 },
+
+  // ── GOOGLE ──
+  // Gemini 2.5 Flash text: $0.30/M input, $2.50/M output
+  //   (https://ai.google.dev/gemini-api/docs/pricing, last updated 2026-04-15)
+  // Cached input = 10% of standard input ($0.03/M).
+  // Note: audio input is priced differently ($1.00/M) but SAM only sends text.
+  "gemini-2.5-flash": { inputCentsPer1M: 30, outputCentsPer1M: 250, cachedInputCentsPer1M: 3 },
 };
 
 function estimateCostCents(model: string, inputTokens: number, outputTokens: number, cachedInputTokens: number = 0): number {
