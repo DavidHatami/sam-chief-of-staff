@@ -162,10 +162,31 @@ export default async (req: Request, context: Context) => {
       const body = await req.json();
       const { to, cc, bcc, subject, content, contentType } = body;
 
+      // Microsoft Graph's plain-text sendMail historically defaults to a
+      // charset that mangles non-ASCII characters (em-dashes, smart quotes,
+      // accents). Symptom: sender writes "—" and recipient sees "â".
+      //
+      // Fix: always send as HTML. HTML email carries an explicit charset
+      // declaration in the body, and Outlook/Gmail render UTF-8 reliably
+      // when the wrapper says so. Callers who pass contentType "HTML" get
+      // their HTML as-is. Callers who pass plain text (or nothing) get
+      // their text safely escaped, line breaks preserved, and a UTF-8
+      // meta tag emitted at the top.
+      const wantsHtml = (contentType || "Text").toLowerCase() === "html";
+      const finalContent = wantsHtml
+        ? content
+        : `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;">${
+            String(content || "")
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/\n/g, "<br>")
+          }</body></html>`;
+
       const message: Record<string, unknown> = {
         message: {
           subject,
-          body: { contentType: contentType || "Text", content },
+          body: { contentType: "HTML", content: finalContent },
           toRecipients: (Array.isArray(to) ? to : [to]).map((email: string) => ({
             emailAddress: { address: email },
           })),

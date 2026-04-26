@@ -49,7 +49,12 @@ function decodeBase64Url(str: string): string {
 }
 
 function encodeBase64Url(str: string): string {
-  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  // btoa() only handles single-byte (Latin-1) strings. Any em-dash, smart
+  // quote, or accented character in the email body would either throw
+  // InvalidCharacterError or silently corrupt the output. Buffer.from with
+  // 'utf-8' encoding produces correct multi-byte bytes; .toString('base64url')
+  // gives the URL-safe variant Gmail's API expects, no replace dance needed.
+  return Buffer.from(str, "utf-8").toString("base64url");
 }
 
 interface GmailHeader {

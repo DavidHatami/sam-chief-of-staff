@@ -90,3 +90,7 @@ export default async (req: Request, context: Context) => {
 export const config: Config = {
   schedule: "0 11 * * *",
 };
+
+// Schedule re-registration touch: 2026-04-26 — Netlify cron scheduler had stopped firing
+// these jobs (4 alarms in cron-watchdog with 'No heartbeat ever recorded'). Manual invokes
+// confirmed the function code is healthy. Forcing redeploy to re-register the schedule.
