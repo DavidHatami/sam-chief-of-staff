@@ -1276,30 +1276,236 @@ function checkAlarms(now){
   });
   if(changed)saveAlarms(kept);
 }
+// ── ALARM SOUND ENGINE ──
+// Six built-in synthesized presets via Web Audio API + custom uploads via data
+// URLs in localStorage. Each alarm picks its own sound. Volume is global.
+// Sounds play once when the alarm fires; user dismisses (and stops the sound)
+// by clicking the toast.
+const ALARM_SOUND_PRESETS=[
+  {id:'builtin:chime',     name:'Bell Chime',     render:renderChime},
+  {id:'builtin:digital',   name:'Digital Beep',   render:renderDigital},
+  {id:'builtin:gentle',    name:'Gentle Rise',    render:renderGentle},
+  {id:'builtin:klaxon',    name:'Klaxon',         render:renderKlaxon},
+  {id:'builtin:submarine', name:'Submarine Dive', render:renderSubmarine},
+  {id:'builtin:zen',       name:'Zen Bowl',       render:renderZen},
+];
+function getAlarmVolume(){
+  const v=parseInt(localStorage.getItem('sam-alarm-volume')||'70',10);
+  return isNaN(v)?70:Math.max(0,Math.min(100,v));
+}
+function setAlarmVolume(v){localStorage.setItem('sam-alarm-volume',String(Math.max(0,Math.min(100,parseInt(v,10)||0))));}
+function getCustomSoundCatalog(){try{return JSON.parse(localStorage.getItem('sam-alarm-sounds')||'[]');}catch(e){return [];}}
+function saveCustomSoundCatalog(c){try{localStorage.setItem('sam-alarm-sounds',JSON.stringify(c));return true;}catch(e){return false;}}
+function getAllAlarmSounds(){
+  return [
+    ...ALARM_SOUND_PRESETS.map(p=>({id:p.id,name:p.name,kind:'builtin'})),
+    ...getCustomSoundCatalog().map(c=>({id:c.id,name:c.name,kind:'custom'})),
+  ];
+}
+function lookupAlarmSound(id){
+  if(!id)id='builtin:chime';
+  const preset=ALARM_SOUND_PRESETS.find(p=>p.id===id);
+  if(preset)return {kind:'builtin',preset};
+  const custom=getCustomSoundCatalog().find(c=>c.id===id);
+  if(custom)return {kind:'custom',custom};
+  return null;
+}
+let __activeAlarmAudio=null;
+function stopAlarmSound(){
+  if(__activeAlarmAudio){
+    try{
+      if(__activeAlarmAudio.audio){__activeAlarmAudio.audio.pause();__activeAlarmAudio.audio.src='';}
+      if(__activeAlarmAudio.ctx){__activeAlarmAudio.ctx.close();}
+    }catch(e){}
+    __activeAlarmAudio=null;
+  }
+}
+function playAlarmSound(soundId){
+  stopAlarmSound();
+  const found=lookupAlarmSound(soundId);
+  if(!found)return;
+  const vol=getAlarmVolume()/100;
+  if(found.kind==='builtin'){
+    try{
+      const ctx=new (window.AudioContext||window.webkitAudioContext)();
+      __activeAlarmAudio={ctx};
+      found.preset.render(ctx,vol);
+      // Auto-clear after the longest sound runs (Zen Bowl peaks at ~5s)
+      setTimeout(()=>{try{ctx.close();}catch(e){};if(__activeAlarmAudio&&__activeAlarmAudio.ctx===ctx)__activeAlarmAudio=null;},6000);
+    }catch(e){console.warn('alarm sound failed',e);}
+  }else if(found.kind==='custom'){
+    try{
+      const audio=new Audio(found.custom.dataUrl);
+      audio.volume=vol;
+      __activeAlarmAudio={audio};
+      audio.play().catch(e=>console.warn('custom sound playback rejected',e));
+      audio.addEventListener('ended',()=>{if(__activeAlarmAudio&&__activeAlarmAudio.audio===audio)__activeAlarmAudio=null;});
+    }catch(e){console.warn('custom alarm sound failed',e);}
+  }
+}
+function testAlarmSound(){
+  const sel=document.getElementById('alarm-sound');
+  if(!sel)return;
+  playAlarmSound(sel.value||'builtin:chime');
+}
+// ── BUILT-IN SOUND RENDERERS ──
+// Each takes (ctx, vol) where vol is 0..1. They schedule on ctx.currentTime
+// and rely on the engine to close the context after ~6s.
+function renderChime(ctx,vol){
+  // E5 → C5 → G4 descending bell. Sine fundamental + triangle harmonics for body.
+  const notes=[{f:659.25,t:0},{f:523.25,t:0.45},{f:392,t:0.9}];
+  notes.forEach(function(n){
+    [{mult:1,type:'sine',amp:0.35},{mult:2.01,type:'triangle',amp:0.12},{mult:3.02,type:'triangle',amp:0.06}].forEach(function(h){
+      const o=ctx.createOscillator();const g=ctx.createGain();
+      o.type=h.type;o.frequency.value=n.f*h.mult;
+      const t0=ctx.currentTime+n.t;
+      g.gain.setValueAtTime(0,t0);
+      g.gain.linearRampToValueAtTime(vol*h.amp,t0+0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001,t0+2.0);
+      o.connect(g);g.connect(ctx.destination);
+      o.start(t0);o.stop(t0+2.1);
+    });
+  });
+}
+function renderDigital(ctx,vol){
+  // Classic 800/1000Hz alarm pattern — three beep pairs.
+  const pattern=[];
+  for(let i=0;i<3;i++){pattern.push({f:800,t:i*0.55,dur:0.2});pattern.push({f:1000,t:i*0.55+0.25,dur:0.2});}
+  pattern.forEach(function(p){
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    o.type='square';o.frequency.value=p.f;
+    const t0=ctx.currentTime+p.t;
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(vol*0.18,t0+0.01);
+    g.gain.setValueAtTime(vol*0.18,t0+p.dur-0.01);
+    g.gain.linearRampToValueAtTime(0,t0+p.dur);
+    o.connect(g);g.connect(ctx.destination);
+    o.start(t0);o.stop(t0+p.dur+0.02);
+  });
+}
+function renderGentle(ctx,vol){
+  // Three cycles of soft sine rising 400→800Hz. Wakes you without panic.
+  for(let c=0;c<3;c++){
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    o.type='sine';
+    const t0=ctx.currentTime+c*1.4;
+    o.frequency.setValueAtTime(400,t0);
+    o.frequency.linearRampToValueAtTime(800,t0+1.0);
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(vol*0.22,t0+0.3);
+    g.gain.linearRampToValueAtTime(vol*0.22,t0+0.85);
+    g.gain.linearRampToValueAtTime(0,t0+1.1);
+    o.connect(g);g.connect(ctx.destination);
+    o.start(t0);o.stop(t0+1.15);
+  }
+}
+function renderKlaxon(ctx,vol){
+  // Urgent A4/C5 sawtooth alternation. Pay-attention-now energy.
+  for(let i=0;i<6;i++){
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    o.type='sawtooth';o.frequency.value=i%2===0?440:523.25;
+    const t0=ctx.currentTime+i*0.32;
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(vol*0.16,t0+0.015);
+    g.gain.setValueAtTime(vol*0.16,t0+0.27);
+    g.gain.linearRampToValueAtTime(0,t0+0.3);
+    o.connect(g);g.connect(ctx.destination);
+    o.start(t0);o.stop(t0+0.31);
+  }
+}
+function renderSubmarine(ctx,vol){
+  // Low 220Hz pulses with vibrato — Secret Agent Man dive horn.
+  for(let p=0;p<4;p++){
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    const lfo=ctx.createOscillator();const lfoG=ctx.createGain();
+    o.type='sawtooth';o.frequency.value=220;
+    lfo.frequency.value=5;lfoG.gain.value=8;
+    lfo.connect(lfoG);lfoG.connect(o.frequency);
+    const t0=ctx.currentTime+p*0.75;
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(vol*0.2,t0+0.08);
+    g.gain.setValueAtTime(vol*0.2,t0+0.5);
+    g.gain.linearRampToValueAtTime(0,t0+0.6);
+    o.connect(g);g.connect(ctx.destination);
+    o.start(t0);o.stop(t0+0.65);
+    lfo.start(t0);lfo.stop(t0+0.65);
+  }
+}
+function renderZen(ctx,vol){
+  // Tibetan bowl: stacked harmonics with long exponential decay. Mellow.
+  const t0=ctx.currentTime;
+  const harm=[
+    {f:220,a:0.35,type:'sine',det:0},
+    {f:220,a:0.18,type:'sine',det:5},
+    {f:440,a:0.20,type:'sine',det:0},
+    {f:660,a:0.10,type:'sine',det:0},
+    {f:880,a:0.05,type:'triangle',det:0},
+  ];
+  harm.forEach(function(h){
+    const o=ctx.createOscillator();const g=ctx.createGain();
+    o.type=h.type;o.frequency.value=h.f;o.detune.value=h.det;
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(vol*h.a,t0+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+4.5);
+    o.connect(g);g.connect(ctx.destination);
+    o.start(t0);o.stop(t0+4.6);
+  });
+}
+// ── CUSTOM SOUND UPLOAD ──
+function handleAlarmSoundUpload(input){
+  const file=input.files&&input.files[0];
+  if(!file)return;
+  if(!file.type.startsWith('audio/')){alert('Please pick an audio file.');return;}
+  const MAX_BYTES=1.5*1024*1024;
+  if(file.size>MAX_BYTES){alert('Audio file too large. Max 1.5MB to fit in browser storage. Try a shorter clip or compressed format (MP3/OGG).');input.value='';return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const dataUrl=e.target.result;
+    const catalog=getCustomSoundCatalog();
+    if(catalog.length>=5){alert('Max 5 custom sounds. Delete one first.');return;}
+    const id='custom:'+Date.now().toString(36);
+    const niceName=file.name.replace(/\.[^.]+$/,'').slice(0,40);
+    catalog.push({id,name:niceName||'Custom Sound',dataUrl,sizeBytes:file.size,addedAt:Date.now()});
+    if(!saveCustomSoundCatalog(catalog)){alert('Browser storage full. Delete other custom sounds and try again.');return;}
+    try{showToast('Sound added: '+niceName,'ok');}catch(e){}
+    // Refresh the modal so the new sound appears in the dropdown and is selected
+    if(document.getElementById('alarm-modal')){
+      localStorage.setItem('sam-alarm-last-sound',id);
+      document.getElementById('alarm-modal').remove();
+      openAlarmModal();
+    }
+  };
+  reader.onerror=function(){alert('Failed to read audio file.');};
+  reader.readAsDataURL(file);
+}
+function deleteCustomSound(id){
+  const catalog=getCustomSoundCatalog().filter(c=>c.id!==id);
+  saveCustomSoundCatalog(catalog);
+  // Also reset any alarms that pointed at the now-deleted sound, so they don't go silent
+  const alarms=getAlarms().map(a=>a.soundId===id?Object.assign({},a,{soundId:'builtin:chime'}):a);
+  saveAlarms(alarms);
+  if(localStorage.getItem('sam-alarm-last-sound')===id)localStorage.setItem('sam-alarm-last-sound','builtin:chime');
+  if(document.getElementById('alarm-modal')){document.getElementById('alarm-modal').remove();openAlarmModal();}
+}
+
 function fireAlarm(a,overdue){
   const titlePrefix=overdue?'⏰ (Overdue) ':'⏰ ';
   const at=new Date(a.time);
   const timeStr=at.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
   const overdueNote=overdue?' · was set for '+timeStr:' — click to dismiss';
-  // Browser notification (if permission granted) + audio beep + on-screen toast
+  // Browser notification (if permission granted) + selected alarm sound + on-screen toast
   try{
     if('Notification' in window&&Notification.permission==='granted'){
       new Notification(titlePrefix+(a.label||'Alarm'),{body:overdue?'Missed — was set for '+timeStr:timeStr,tag:'sam-alarm-'+a.id});
     }
   }catch(e){}
-  try{
-    const ac=new (window.AudioContext||window.webkitAudioContext)();
-    const o=ac.createOscillator();const g=ac.createGain();
-    o.connect(g);g.connect(ac.destination);
-    o.frequency.value=880;g.gain.value=0.15;
-    o.start();setTimeout(()=>{o.stop();ac.close();},1200);
-  }catch(e){}
-  // Toast
+  playAlarmSound(a.soundId||'builtin:chime');
+  // Toast — clicking it dismisses the toast AND stops the sound
   const t=document.createElement('div');
   const bg=overdue?'linear-gradient(135deg,var(--amber),#c2410c)':'linear-gradient(135deg,var(--accent),#7c3aed)';
   t.style.cssText='position:fixed;top:24px;right:24px;z-index:9999;padding:14px 18px;background:'+bg+';color:#fff;border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,0.5);font-family:var(--font);font-weight:600;max-width:320px;cursor:pointer;';
   t.innerHTML=titlePrefix+(a.label?String(a.label).replace(/</g,'&lt;'):'Alarm')+'<div style="font-size:11px;font-weight:400;opacity:0.85;margin-top:3px;font-family:var(--mono);">'+timeStr+overdueNote+'</div>';
-  t.onclick=function(){t.remove();};
+  t.onclick=function(){stopAlarmSound();t.remove();};
   document.body.appendChild(t);
   setTimeout(()=>{if(t.parentNode)t.remove();},20000);
 }
@@ -1317,11 +1523,35 @@ function openAlarmModal(){
   // instead of fighting whatever the browser's native <input type=time> gives them.
   let hourOpts='';for(let h=1;h<=12;h++){hourOpts+='<option value="'+h+'"'+(h===defH12?' selected':'')+'>'+h+'</option>';}
   let minOpts='';for(let m=0;m<60;m++){const mm=String(m).padStart(2,'0');minOpts+='<option value="'+mm+'"'+(m===defMin?' selected':'')+'>'+mm+'</option>';}
+  // Sound picker — built-ins first, then any uploaded customs. Default to last-used sound.
+  const lastSoundId=localStorage.getItem('sam-alarm-last-sound')||'builtin:chime';
+  const allSounds=getAllAlarmSounds();
+  let soundOpts='';
+  allSounds.forEach(function(s){
+    const sel=s.id===lastSoundId?' selected':'';
+    const tag=s.kind==='custom'?' (custom)':'';
+    soundOpts+='<option value="'+s.id+'"'+sel+'>'+esc(s.name)+tag+'</option>';
+  });
+  // Custom-sound management list (only shown if user has uploaded any)
+  const customs=getCustomSoundCatalog();
+  let customMgmtHtml='';
+  if(customs.length){
+    customMgmtHtml='<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:6px;">Custom Sounds ('+customs.length+'/5)</div>';
+    customs.forEach(function(c){
+      const kb=Math.round((c.sizeBytes||0)/1024);
+      customMgmtHtml+='<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;font-size:11px;background:var(--surface-2);border-radius:5px;margin-bottom:4px;">'
+        +'<span><span style="font-weight:500;">'+esc(c.name)+'</span> <span style="color:var(--text-muted);font-family:var(--mono);">'+kb+'KB</span></span>'
+        +'<button onclick="deleteCustomSound(\''+c.id+'\')" style="padding:2px 8px;border-radius:4px;background:none;border:1px solid var(--border);color:var(--text-muted);font-size:10px;cursor:pointer;">Delete</button>'
+        +'</div>';
+    });
+    customMgmtHtml+='</div>';
+  }
   let listHtml='';
   existing.forEach(function(a){
     const at=new Date(a.time);
+    const soundName=(function(){const s=lookupAlarmSound(a.soundId);return s?(s.kind==='builtin'?s.preset.name:s.custom.name):'Bell Chime';})();
     listHtml+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;">
-      <div><div style="font-size:13px;font-weight:500;">${a.label?String(a.label).replace(/</g,'&lt;'):'Alarm'}</div><div style="font-size:11px;color:var(--text-muted);font-family:var(--mono);">${at.toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</div></div>
+      <div><div style="font-size:13px;font-weight:500;">${a.label?String(a.label).replace(/</g,'&lt;'):'Alarm'}</div><div style="font-size:11px;color:var(--text-muted);font-family:var(--mono);">${at.toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})} · 🔊 ${esc(soundName)}</div></div>
       <button onclick="deleteAlarm('${a.id}')" style="padding:4px 10px;border-radius:5px;background:var(--red-dim);border:1px solid var(--red);color:var(--red);font-size:11px;cursor:pointer;">Remove</button>
     </div>`;
   });
@@ -1329,10 +1559,10 @@ function openAlarmModal(){
   const modal=document.createElement('div');
   modal.id='alarm-modal';
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
-  modal.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;width:100%;max-width:420px;margin:20px;">
+  modal.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;width:100%;max-width:480px;margin:20px;max-height:90vh;overflow:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h3 style="font-size:15px;font-weight:600;">⏰ Alarms</h3>
-      <button onclick="document.getElementById('alarm-modal').remove()" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;">✕</button>
+      <button onclick="stopAlarmSound();document.getElementById('alarm-modal').remove();" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;">✕</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px;align-items:center;">
       <input id="alarm-label" type="text" placeholder="Label (optional)" style="padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
@@ -1346,14 +1576,27 @@ function openAlarmModal(){
         </select>
       </div>
     </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">
+      <select id="alarm-sound" style="flex:1;padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">${soundOpts}</select>
+      <button onclick="testAlarmSound()" title="Preview sound" style="padding:8px 12px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;cursor:pointer;">▶ Test</button>
+      <button onclick="stopAlarmSound()" title="Stop preview" style="padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-family:var(--font);font-size:12px;cursor:pointer;">■</button>
+      <button onclick="document.getElementById('alarm-sound-upload').click()" title="Upload custom sound (max 1.5MB)" style="padding:8px 12px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;cursor:pointer;">+ Upload</button>
+      <input type="file" id="alarm-sound-upload" accept="audio/*" style="display:none;" onchange="handleAlarmSoundUpload(this)">
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;font-size:11px;">
+      <label style="color:var(--text-muted);min-width:50px;">Volume</label>
+      <input type="range" id="alarm-volume" min="0" max="100" value="${getAlarmVolume()}" oninput="setAlarmVolume(this.value);document.getElementById('alarm-vol-display').textContent=this.value+'%';" style="flex:1;">
+      <span id="alarm-vol-display" style="font-family:var(--mono);min-width:42px;text-align:right;color:var(--text-muted);">${getAlarmVolume()}%</span>
+    </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
       <input id="alarm-date" type="date" value="${now.toISOString().split('T')[0]}" style="flex:1;padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
       <button onclick="addAlarm()" style="padding:8px 18px;border-radius:6px;background:var(--accent);border:none;color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;">+ Add Alarm</button>
     </div>
     <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:8px;">Active</div>
     ${listHtml}
+    ${customMgmtHtml}
   </div>`;
-  modal.addEventListener('click',function(e){if(e.target===modal)modal.remove();});
+  modal.addEventListener('click',function(e){if(e.target===modal){stopAlarmSound();modal.remove();}});
   document.body.appendChild(modal);
 }
 function addAlarm(){
@@ -1362,6 +1605,7 @@ function addAlarm(){
   const hour12=parseInt(document.getElementById('alarm-hour').value,10);
   const min=document.getElementById('alarm-min').value;
   const ampm=document.getElementById('alarm-ampm').value;
+  const soundId=(document.getElementById('alarm-sound')||{}).value||'builtin:chime';
   if(!date||isNaN(hour12)||!min||!ampm)return;
   // Convert 12-hour to 24-hour. 12 AM = 0, 12 PM = 12, otherwise add 12 for PM.
   let hour24=hour12%12;
@@ -1370,8 +1614,11 @@ function addAlarm(){
   const dt=new Date(date+'T'+time+':00');
   if(isNaN(dt.getTime())||dt<new Date()){alert('Pick a future time.');return;}
   const alarms=getAlarms();
-  alarms.push({id:Date.now().toString(36),label:label||'Alarm',time:dt.toISOString(),triggered:false});
+  alarms.push({id:Date.now().toString(36),label:label||'Alarm',time:dt.toISOString(),triggered:false,soundId});
   saveAlarms(alarms);
+  // Remember the chosen sound so it pre-selects next time
+  localStorage.setItem('sam-alarm-last-sound',soundId);
+  stopAlarmSound();
   document.getElementById('alarm-modal').remove();
   openAlarmModal();
 }
