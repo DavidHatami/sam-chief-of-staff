@@ -177,11 +177,11 @@ RULES:
       } else {
         merged.people.push({ name: norm, facts: newFacts, lastMentionedAt: now });
       }
-      // Dual-write to Postgres (best-effort, fire-and-forget). The upsert
-      // RPC handles both new and existing persons atomically with event emission.
-      pgDualWritePerson(norm, newFacts).catch((e: any) =>
-        console.error("[memory-extract] PG upsert person failed:", e?.message || e)
-      );
+      // Dual-write to Postgres. AWAITED — fire-and-forget loses races against
+      // function termination in Netlify. The helper's internal try/catch
+      // swallows PG errors so this await never throws; SAM keeps working
+      // even if PG is unreachable.
+      await pgDualWritePerson(norm, newFacts);
     }
   }
 
@@ -205,9 +205,7 @@ RULES:
       } else {
         merged.projects.push({ name: norm, status: p.status, facts: newFacts, lastUpdatedAt: now });
       }
-      pgDualWriteInitiative(norm, p.status, newFacts).catch((e: any) =>
-        console.error("[memory-extract] PG upsert initiative failed:", e?.message || e)
-      );
+      await pgDualWriteInitiative(norm, p.status, newFacts);
     }
   }
 
@@ -220,9 +218,7 @@ RULES:
       if (!merged.preferences.some((ep) => ep.text.toLowerCase() === norm.toLowerCase())) {
         merged.preferences.push({ text: norm, extractedAt: now });
         // Only dual-write to PG when it's actually NEW. Existing prefs don't get re-written.
-        pgDualWritePreference(norm).catch((e: any) =>
-          console.error("[memory-extract] PG insert preference failed:", e?.message || e)
-        );
+        await pgDualWritePreference(norm);
       }
     }
   }
@@ -235,9 +231,7 @@ RULES:
       if (!norm) continue;
       if (!merged.decisions.some((ed) => ed.text.toLowerCase() === norm.toLowerCase())) {
         merged.decisions.push({ text: norm, context: dec.context, decidedAt: now });
-        pgDualWriteDecision(norm, dec.context).catch((e: any) =>
-          console.error("[memory-extract] PG insert decision failed:", e?.message || e)
-        );
+        await pgDualWriteDecision(norm, dec.context);
       }
     }
   }

@@ -163,22 +163,28 @@ export default async (req: Request, context: Context) => {
       // Primary write: blob (still source of truth in Phase 1)
       await store.setJSON(task.id, task);
 
-      // Dual-write to Postgres (best-effort, never blocks the response).
-      // If PG is down, blob still succeeded so SAM keeps working.
-      // The flag dual_write_tasks lets us turn this off without redeploying.
+      // Dual-write to Postgres. AWAITED, not fire-and-forget — Netlify
+      // Functions terminate the worker as soon as the Response returns, so
+      // any in-flight promises get killed mid-request. Awaiting costs ~150ms
+      // but makes the write reliable. Phase 4 removes the blob write so
+      // latency drops back. Try/catch guards SAM staying up if PG is down.
       if (await isFlagOn("dual_write_tasks")) {
-        pgCreateTask({
-          legacyId: task.id,
-          title: task.title,
-          description: task.description,
-          priority: task.priority,
-          status: task.status,
-          category: task.category,
-          dueDate: task.dueDate || null,
-          notes: task.notes,
-          subtasks: task.subtasks,
-          source: "tasks_api",
-        }).catch((e: any) => console.error("[tasks] dual-write to PG failed:", e?.message || e));
+        try {
+          await pgCreateTask({
+            legacyId: task.id,
+            title: task.title,
+            description: task.description,
+            priority: task.priority,
+            status: task.status,
+            category: task.category,
+            dueDate: task.dueDate || null,
+            notes: task.notes,
+            subtasks: task.subtasks,
+            source: "tasks_api",
+          });
+        } catch (e: any) {
+          console.error("[tasks] dual-write create to PG failed:", e?.message || e);
+        }
       }
 
       return new Response(JSON.stringify({ task }), { status: 201, headers });
@@ -203,8 +209,11 @@ export default async (req: Request, context: Context) => {
       await store.setJSON(id, updated);
 
       if (await isFlagOn("dual_write_tasks")) {
-        pgUpdateTaskByLegacyId(id, body, "tasks_api")
-          .catch((e: any) => console.error("[tasks] dual-write update to PG failed:", e?.message || e));
+        try {
+          await pgUpdateTaskByLegacyId(id, body, "tasks_api");
+        } catch (e: any) {
+          console.error("[tasks] dual-write update to PG failed:", e?.message || e);
+        }
       }
 
       return new Response(JSON.stringify({ task: updated }), { headers });
@@ -220,8 +229,11 @@ export default async (req: Request, context: Context) => {
       await store.delete(id);
 
       if (await isFlagOn("dual_write_tasks")) {
-        pgDeleteTaskByLegacyId(id, "tasks_api")
-          .catch((e: any) => console.error("[tasks] dual-write delete to PG failed:", e?.message || e));
+        try {
+          await pgDeleteTaskByLegacyId(id, "tasks_api");
+        } catch (e: any) {
+          console.error("[tasks] dual-write delete to PG failed:", e?.message || e);
+        }
       }
 
       return new Response(JSON.stringify({ deleted: true, id }), { headers });
