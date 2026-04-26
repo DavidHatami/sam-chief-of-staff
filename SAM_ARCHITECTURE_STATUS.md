@@ -137,3 +137,6 @@ If a future session needs to pick this up: read `STATUS.md` first, then
 (event pipeline), then `netlify/lib/llm-cost.ts` (cost tracking). Those
 three files contain the architectural shifts; everything else is
 plumbing or instrumentation.
+
+
+<!-- redeploy 12434fa7 → cloud-mode signing key -->
