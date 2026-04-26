@@ -1,5 +1,6 @@
 import type { Context, Config } from "@netlify/functions";
 
+// redeploy marker: phase1-env-fix
 /**
  * Phase 1 debug endpoint — explicitly verifies Postgres reachability.
  * Returns every step's pass/fail with raw error text, no swallowing.
