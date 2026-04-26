@@ -177,10 +177,16 @@ RULES:
       } else {
         merged.people.push({ name: norm, facts: newFacts, lastMentionedAt: now });
       }
+      // Dual-write to Postgres (best-effort, fire-and-forget). The upsert
+      // RPC handles both new and existing persons atomically with event emission.
+      pgDualWritePerson(norm, newFacts).catch((e: any) =>
+        console.error("[memory-extract] PG upsert person failed:", e?.message || e)
+      );
     }
   }
 
-  // Projects: dedupe by lowercased name
+  // Projects (called "initiatives" in PG to avoid name collision with the
+  // separate Projects workspace concept). Same merge semantics.
   if (Array.isArray(extracted.projects)) {
     for (const p of extracted.projects) {
       if (!p?.name || typeof p.name !== "string") continue;
@@ -199,6 +205,9 @@ RULES:
       } else {
         merged.projects.push({ name: norm, status: p.status, facts: newFacts, lastUpdatedAt: now });
       }
+      pgDualWriteInitiative(norm, p.status, newFacts).catch((e: any) =>
+        console.error("[memory-extract] PG upsert initiative failed:", e?.message || e)
+      );
     }
   }
 
@@ -210,6 +219,10 @@ RULES:
       if (!norm) continue;
       if (!merged.preferences.some((ep) => ep.text.toLowerCase() === norm.toLowerCase())) {
         merged.preferences.push({ text: norm, extractedAt: now });
+        // Only dual-write to PG when it's actually NEW. Existing prefs don't get re-written.
+        pgDualWritePreference(norm).catch((e: any) =>
+          console.error("[memory-extract] PG insert preference failed:", e?.message || e)
+        );
       }
     }
   }
@@ -222,11 +235,61 @@ RULES:
       if (!norm) continue;
       if (!merged.decisions.some((ed) => ed.text.toLowerCase() === norm.toLowerCase())) {
         merged.decisions.push({ text: norm, context: dec.context, decidedAt: now });
+        pgDualWriteDecision(norm, dec.context).catch((e: any) =>
+          console.error("[memory-extract] PG insert decision failed:", e?.message || e)
+        );
       }
     }
   }
 
   return merged;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DUAL-WRITE HELPERS — every memory mutation also lands in Postgres so
+// Phase 3 can cut over reads. Lazy-imported to avoid pulling Supabase JS
+// into modules that don't need it.
+// ─────────────────────────────────────────────────────────────────────────
+
+async function pgDualWritePerson(name: string, facts: string[]): Promise<void> {
+  if (!facts || facts.length === 0) return; // skip empty fact lists
+  try {
+    const { upsertPerson, isFlagOn } = await import("./sam-db.ts");
+    if (!(await isFlagOn("dual_write_memory"))) return;
+    await upsertPerson({ name, facts, source: "memory_extract" });
+  } catch (e: any) {
+    console.error("[memory-extract] pgDualWritePerson:", e?.message || e);
+  }
+}
+
+async function pgDualWriteInitiative(name: string, status: string | undefined, facts: string[]): Promise<void> {
+  try {
+    const { upsertInitiative, isFlagOn } = await import("./sam-db.ts");
+    if (!(await isFlagOn("dual_write_memory"))) return;
+    await upsertInitiative({ name, status, facts, source: "memory_extract" });
+  } catch (e: any) {
+    console.error("[memory-extract] pgDualWriteInitiative:", e?.message || e);
+  }
+}
+
+async function pgDualWritePreference(text: string): Promise<void> {
+  try {
+    const { insertPreference, isFlagOn } = await import("./sam-db.ts");
+    if (!(await isFlagOn("dual_write_memory"))) return;
+    await insertPreference(text, "memory_extract");
+  } catch (e: any) {
+    console.error("[memory-extract] pgDualWritePreference:", e?.message || e);
+  }
+}
+
+async function pgDualWriteDecision(text: string, context: string | undefined): Promise<void> {
+  try {
+    const { insertDecision, isFlagOn } = await import("./sam-db.ts");
+    if (!(await isFlagOn("dual_write_memory"))) return;
+    await insertDecision({ text, context, source: "memory_extract" });
+  } catch (e: any) {
+    console.error("[memory-extract] pgDualWriteDecision:", e?.message || e);
+  }
 }
 
 /**

@@ -1,5 +1,12 @@
 import type { Context, Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import {
+  createTask as pgCreateTask,
+  updateTaskByLegacyId as pgUpdateTaskByLegacyId,
+  deleteTaskByLegacyId as pgDeleteTaskByLegacyId,
+  isFlagOn,
+  listTasksFromPG,
+} from "../lib/sam-db.ts";
 
 /**
  * Tasks API for SAM — Chief of Staff
@@ -39,6 +46,30 @@ export default async (req: Request, context: Context) => {
   try {
     // ── LIST ALL TASKS ──
     if (req.method === "GET" && (path === "" || path === "/")) {
+      // Phase 3 cutover: read from PG if the flag is set, fall back to blobs
+      // on any error so SAM never goes down because PG had a hiccup.
+      if (await isFlagOn("read_from_pg_tasks")) {
+        const pgTasks = await listTasksFromPG();
+        if (pgTasks !== null) {
+          // Map PG row shape back to the wire shape the frontend expects
+          const mapped: Task[] = pgTasks.map((r: any) => ({
+            id: r.legacy_id || r.id,
+            title: r.title,
+            description: r.description || "",
+            priority: r.priority,
+            status: r.status,
+            category: r.category || "",
+            dueDate: r.due_date || "",
+            notes: r.notes || "",
+            subtasks: r.subtasks || [],
+            createdAt: r.created_at,
+            updatedAt: r.updated_at,
+          }));
+          return new Response(JSON.stringify({ tasks: mapped, source: "pg" }), { headers });
+        }
+        console.warn("[tasks] read_from_pg_tasks=on but PG read failed; falling back to blobs");
+      }
+
       const result = await store.list();
       // Fetch all task blobs in parallel instead of sequentially
       const taskPromises = result.blobs.map(blob => store.get(blob.key, { type: "json" }));
@@ -129,7 +160,27 @@ export default async (req: Request, context: Context) => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      // Primary write: blob (still source of truth in Phase 1)
       await store.setJSON(task.id, task);
+
+      // Dual-write to Postgres (best-effort, never blocks the response).
+      // If PG is down, blob still succeeded so SAM keeps working.
+      // The flag dual_write_tasks lets us turn this off without redeploying.
+      if (await isFlagOn("dual_write_tasks")) {
+        pgCreateTask({
+          legacyId: task.id,
+          title: task.title,
+          description: task.description,
+          priority: task.priority,
+          status: task.status,
+          category: task.category,
+          dueDate: task.dueDate || null,
+          notes: task.notes,
+          subtasks: task.subtasks,
+          source: "tasks_api",
+        }).catch((e: any) => console.error("[tasks] dual-write to PG failed:", e?.message || e));
+      }
+
       return new Response(JSON.stringify({ task }), { status: 201, headers });
     }
 
@@ -150,6 +201,12 @@ export default async (req: Request, context: Context) => {
         updatedAt: new Date().toISOString(),
       };
       await store.setJSON(id, updated);
+
+      if (await isFlagOn("dual_write_tasks")) {
+        pgUpdateTaskByLegacyId(id, body, "tasks_api")
+          .catch((e: any) => console.error("[tasks] dual-write update to PG failed:", e?.message || e));
+      }
+
       return new Response(JSON.stringify({ task: updated }), { headers });
     }
 
@@ -161,6 +218,12 @@ export default async (req: Request, context: Context) => {
         return new Response(JSON.stringify({ error: "Task not found" }), { status: 404, headers });
       }
       await store.delete(id);
+
+      if (await isFlagOn("dual_write_tasks")) {
+        pgDeleteTaskByLegacyId(id, "tasks_api")
+          .catch((e: any) => console.error("[tasks] dual-write delete to PG failed:", e?.message || e));
+      }
+
       return new Response(JSON.stringify({ deleted: true, id }), { headers });
     }
 
