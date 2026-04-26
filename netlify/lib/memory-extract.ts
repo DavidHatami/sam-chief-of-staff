@@ -136,6 +136,20 @@ RULES:
       return existing;
     }
     const data = await r.json();
+    // Phase 8: record token usage. Lazy import keeps this from forcing
+    // sam-db into modules that don't otherwise need it.
+    try {
+      const { trackCost } = await import("./llm-cost.ts");
+      await trackCost({
+        provider: "anthropic",
+        model: "claude-opus-4-7",
+        feature: "memory_extract",
+        responseBody: data,
+        metadata: { turns_processed: recentTurns.length },
+      });
+    } catch (e: any) {
+      console.error("[memory-extract] cost track failed:", e?.message || e);
+    }
     const text = data.content?.map((b: any) => (b.type === "text" ? b.text : "")).join("") || "";
     // Strip any code fences the model might have added
     const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();

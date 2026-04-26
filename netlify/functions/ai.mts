@@ -356,6 +356,18 @@ export default async (req: Request, context: Context) => {
         }
 
         const data = await resp.json();
+        // Phase 8: track this Anthropic call. Wrapped in try/catch so cost
+        // tracking failure never breaks chat. Lazy import to keep cold-start light.
+        try {
+          const { trackCost } = await import("../lib/llm-cost.ts");
+          await trackCost({
+            provider: "anthropic",
+            model: model || "claude-opus-4-7",
+            feature: "chat",
+            responseBody: data,
+            metadata: { has_tools: (data.content || []).some((b: any) => b.type === "tool_use") },
+          });
+        } catch (_e) { /* swallow — chat must keep working */ }
         const content = data.content || [];
         const stopReason = data.stop_reason;
 
@@ -478,6 +490,15 @@ export default async (req: Request, context: Context) => {
       clearTimeout(openaiTimeout);
 
       const data = await resp.json();
+      try {
+        const { trackCost } = await import("../lib/llm-cost.ts");
+        await trackCost({
+          provider: "openai",
+          model: data.model || "gpt-5.4",
+          feature: "chat",
+          responseBody: data,
+        });
+      } catch (_e) { /* swallow */ }
       const reply =
         data.choices?.[0]?.message?.content ||
         data.error?.message ||
@@ -542,6 +563,15 @@ export default async (req: Request, context: Context) => {
       clearTimeout(geminiTimeout);
 
       const data = await resp.json();
+      try {
+        const { trackCost } = await import("../lib/llm-cost.ts");
+        await trackCost({
+          provider: "gemini",
+          model: "gemini-2.5-flash",
+          feature: "chat",
+          responseBody: data,
+        });
+      } catch (_e) { /* swallow */ }
       const reply =
         data.candidates?.[0]?.content?.parts
           ?.map((p: { text?: string }) => p.text || "")
@@ -622,10 +652,22 @@ export default async (req: Request, context: Context) => {
             let text = "";
             if (name.includes("Claude")) {
               text = data.content?.map((b: any) => b.type === "text" ? b.text : "").join("") || data.error?.message || "";
+              try {
+                const { trackCost } = await import("../lib/llm-cost.ts");
+                await trackCost({ provider: "anthropic", model: data.model || "claude-opus-4-7", feature: "council", responseBody: data });
+              } catch (_e) {}
             } else if (name.includes("GPT")) {
               text = data.choices?.[0]?.message?.content || data.error?.message || "";
+              try {
+                const { trackCost } = await import("../lib/llm-cost.ts");
+                await trackCost({ provider: "openai", model: data.model || "gpt-5.4", feature: "council", responseBody: data });
+              } catch (_e) {}
             } else if (name.includes("Gemini")) {
               text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || data.error?.message || "";
+              try {
+                const { trackCost } = await import("../lib/llm-cost.ts");
+                await trackCost({ provider: "gemini", model: "gemini-2.5-flash", feature: "council", responseBody: data });
+              } catch (_e) {}
             }
             responses.push({ model: name, reply: text || "(empty response)", status: "ok" });
           } catch (e) {
@@ -685,6 +727,16 @@ Synthesize now (be concise, no preamble):`;
         clearTimeout(synthTimeout);
 
         const synthData = await synthResp.json();
+        try {
+          const { trackCost } = await import("../lib/llm-cost.ts");
+          await trackCost({
+            provider: "anthropic",
+            model: synthData.model || "claude-opus-4-7",
+            feature: "council_synthesis",
+            responseBody: synthData,
+            metadata: { models_synthesized: responses.filter(r => r.status === "ok").map(r => r.model) },
+          });
+        } catch (_e) {}
         const synthesized = synthData.content?.map((b: any) => b.type === "text" ? b.text : "").join("") || "Synthesis error: " + JSON.stringify(synthData.error || synthData).substring(0, 200);
 
         return new Response(JSON.stringify({
