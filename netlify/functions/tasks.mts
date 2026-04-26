@@ -43,7 +43,11 @@ export default async (req: Request, context: Context) => {
       // Fetch all task blobs in parallel instead of sequentially
       const taskPromises = result.blobs.map(blob => store.get(blob.key, { type: "json" }));
       const rawTasks = await Promise.all(taskPromises);
-      const tasks: Task[] = rawTasks.filter(t => t !== null && typeof t === "object") as Task[];
+      // Filter to proper task objects: not null, is an object, NOT an array
+      // (arrays pass `typeof t === "object"` so they have to be excluded explicitly).
+      // Without the !Array.isArray check, a corrupt blob containing an array of subtasks
+      // surfaces as a single "task" that's actually a list — causing downstream parsers to crash.
+      const tasks: Task[] = rawTasks.filter(t => t !== null && typeof t === "object" && !Array.isArray(t)) as Task[];
       // Sort: urgent first, then by createdAt descending
       const priorityOrder: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
       tasks.sort((a, b) => {
@@ -55,6 +59,58 @@ export default async (req: Request, context: Context) => {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
       return new Response(JSON.stringify({ tasks }), { headers });
+    }
+
+    // ── CLEANUP ADMIN ENDPOINT ──
+    // Scans every task blob, identifies malformed entries (not a proper task object —
+    // null, primitive, or array), and removes them. Default is dry-run (reports what
+    // would be removed); pass ?confirm=yes to actually delete.
+    //
+    // Why this exists: an old write path (likely a buggy bulk-import or subtasks-promotion)
+    // left at least one blob whose content is an array of task-like objects instead of a
+    // single task. The GET filter now rejects arrays, but the orphan blobs are still
+    // sitting there consuming list-call latency and confusing any direct blob iteration.
+    if ((req.method === "POST" || req.method === "GET") && path === "/cleanup") {
+      const confirm = url.searchParams.get("confirm") === "yes";
+      const result = await store.list();
+      const inspections = await Promise.all(
+        result.blobs.map(async (blob) => {
+          const content = await store.get(blob.key, { type: "json" });
+          let issue: string | null = null;
+          if (content === null) issue = "blob is null";
+          else if (typeof content !== "object") issue = `not an object (${typeof content})`;
+          else if (Array.isArray(content)) issue = `is an array (${content.length} items)`;
+          else if (typeof (content as any).id !== "string") issue = "missing string id field";
+          return { key: blob.key, issue, sample: issue && content ? JSON.stringify(content).substring(0, 200) : null };
+        })
+      );
+      const malformed = inspections.filter((i) => i.issue);
+      if (!confirm) {
+        return new Response(JSON.stringify({
+          dryRun: true,
+          totalBlobs: result.blobs.length,
+          malformedCount: malformed.length,
+          malformed,
+          note: "Pass ?confirm=yes to actually delete these blobs",
+        }), { headers });
+      }
+      // Confirmed — delete each malformed blob
+      const deletions = await Promise.all(
+        malformed.map(async (m) => {
+          try {
+            await store.delete(m.key);
+            return { key: m.key, deleted: true };
+          } catch (e: any) {
+            return { key: m.key, deleted: false, error: String(e) };
+          }
+        })
+      );
+      return new Response(JSON.stringify({
+        confirmed: true,
+        totalBlobs: result.blobs.length,
+        deleted: deletions.filter((d) => d.deleted).length,
+        failures: deletions.filter((d) => !d.deleted),
+      }), { headers });
     }
 
     // ── CREATE TASK ──

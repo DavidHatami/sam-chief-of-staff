@@ -435,36 +435,6 @@ function samSignOut(){
       <div class="eld" style="padding:8px 0;font-size:12px;">Loading status...</div>
     </div>
   </div>
-  <!-- CRON HEALTH — watchdog visibility for all 7 scheduled jobs -->
-  <div class="card" id="cron-health-card" style="margin-top:0;padding:10px 14px;">
-    <div class="ch" style="margin-bottom:6px;">
-      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">⚙️ Cron Health<span id="cron-health-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
-      <span class="badge" style="cursor:pointer" onclick="loadCronHealth(true)">REFRESH</span>
-    </div>
-    <div id="cron-health-rows" style="display:flex;flex-direction:column;gap:4px;">
-      <div class="eld" style="padding:8px 0;font-size:12px;">Loading cron status...</div>
-    </div>
-  </div>
-  <!-- CREDENTIAL HEALTH — proves every external service still authenticates -->
-  <div class="card" id="cred-health-card" style="margin-top:0;padding:10px 14px;">
-    <div class="ch" style="margin-bottom:6px;">
-      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🔐 Credentials<span id="cred-health-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
-      <span class="badge" style="cursor:pointer" onclick="loadCredHealth(true)">REFRESH</span>
-    </div>
-    <div id="cred-health-rows" style="display:flex;flex-direction:column;gap:4px;">
-      <div class="eld" style="padding:8px 0;font-size:12px;">Loading credential status...</div>
-    </div>
-  </div>
-  <!-- SMOKE TEST — last post-deploy E2E result -->
-  <div class="card" id="smoke-test-card" style="margin-top:0;padding:10px 14px;">
-    <div class="ch" style="margin-bottom:6px;">
-      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🧪 Smoke Test<span id="smoke-test-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
-      <span class="badge" style="cursor:pointer" onclick="runSmokeTestNow(this)" id="smoke-run-btn">RUN NOW</span>
-    </div>
-    <div id="smoke-test-rows" style="display:flex;flex-direction:column;gap:4px;">
-      <div class="eld" style="padding:8px 0;font-size:12px;">Loading last smoke test...</div>
-    </div>
-  </div>
   <!-- SAM MEMORY — what SAM has learned about you, the people you mention, your projects, decisions -->
   <div class="card" id="sam-memory-card" style="margin-top:0;padding:10px 14px;">
     <div class="ch" style="margin-bottom:6px;">
@@ -1147,6 +1117,39 @@ function samSignOut(){
     <div class="ic"><div class="ii">🎥</div><h4>Zoom</h4><p>Server-to-Server OAuth — Meetings, recordings, transcripts, auto cloud recording.</p><div class="is" style="background:var(--green-dim);color:var(--green);">● CONNECTED</div></div>
   </div>
   <div style="margin-top:24px;">
+    <div class="hdr"><h1>Operational Health</h1></div>
+    <!-- CRON HEALTH — watchdog visibility for all scheduled jobs -->
+    <div class="card" id="cron-health-card" style="margin-top:0;padding:10px 14px;margin-bottom:8px;">
+      <div class="ch" style="margin-bottom:6px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">⚙️ Cron Health<span id="cron-health-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+        <span class="badge" style="cursor:pointer" onclick="loadCronHealth(true)">REFRESH</span>
+      </div>
+      <div id="cron-health-rows" style="display:flex;flex-direction:column;gap:4px;">
+        <div class="eld" style="padding:8px 0;font-size:12px;">Loading cron status...</div>
+      </div>
+    </div>
+    <!-- CREDENTIAL HEALTH — proves every external service still authenticates -->
+    <div class="card" id="cred-health-card" style="margin-top:0;padding:10px 14px;margin-bottom:8px;">
+      <div class="ch" style="margin-bottom:6px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🔐 Credentials<span id="cred-health-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+        <span class="badge" style="cursor:pointer" onclick="loadCredHealth(true)">REFRESH</span>
+      </div>
+      <div id="cred-health-rows" style="display:flex;flex-direction:column;gap:4px;">
+        <div class="eld" style="padding:8px 0;font-size:12px;">Loading credential status...</div>
+      </div>
+    </div>
+    <!-- SMOKE TEST — last post-deploy E2E result -->
+    <div class="card" id="smoke-test-card" style="margin-top:0;padding:10px 14px;">
+      <div class="ch" style="margin-bottom:6px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🧪 Smoke Test<span id="smoke-test-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+        <span class="badge" style="cursor:pointer" onclick="runSmokeTestNow(this)" id="smoke-run-btn">RUN NOW</span>
+      </div>
+      <div id="smoke-test-rows" style="display:flex;flex-direction:column;gap:4px;">
+        <div class="eld" style="padding:8px 0;font-size:12px;">Loading last smoke test...</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:24px;">
     <div class="hdr"><h1>Data Storage</h1></div>
     <div class="ig" style="grid-template-columns:repeat(3,1fr);">
       <div class="ic" style="cursor:pointer;" onclick="go('tasks',document.querySelectorAll('.ni')[3]);setTimeout(()=>{const ab=document.querySelector('.etb-f:last-child');if(ab)filterTasks('archived',ab);},200);">
@@ -1236,7 +1239,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadCronHealth();loadCredHealth();loadSmokeTest();loadSamMemory();loadAnticipations();}if(id==='integrations'&&!instLoaded){loadInstructions();checkBackupStatus();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadSamMemory();loadAnticipations();}if(id==='integrations'){if(!instLoaded){loadInstructions();checkBackupStatus();}loadCronHealth();loadCredHealth();loadSmokeTest();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -6437,11 +6440,9 @@ function updateDashboardTasks(){
 // Load tasks on init
 loadTasks();
 
-// Load SAM Status card on init — populates dashboard roll-up before user scrolls
+// Load SAM Status card on init — populates dashboard roll-up before user scrolls.
+// Cron Health / Credentials / Smoke Test moved to Integrations tab and load lazily.
 loadSamStatus();
-loadCronHealth();
-loadCredHealth();
-loadSmokeTest();
 loadSamHistory();
 loadSamMemory();
 loadAnticipations();
