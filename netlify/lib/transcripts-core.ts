@@ -119,6 +119,15 @@ ${args.transcript.substring(0, 8000)}`;
   if (!resp.ok) throw new Error(`Claude extraction failed: ${resp.status} ${await resp.text()}`);
 
   const data = await resp.json();
+  try {
+    const { trackCost } = await import("./llm-cost.ts");
+    await trackCost({
+      provider: "anthropic",
+      model: "claude-opus-4-5",
+      feature: "transcripts_to_tasks",
+      responseBody: data,
+    });
+  } catch {}
   const text = data.content?.[0]?.text || "{}";
   const clean = text.replace(/```json|```/g, "").trim();
   try {

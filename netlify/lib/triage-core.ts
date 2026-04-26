@@ -255,6 +255,15 @@ ${msg.bodyPreview}`;
     throw new Error(`Claude classify failed: ${classifyResp.status} ${err}`);
   }
   const classifyData = await classifyResp.json();
+  try {
+    const { trackCost } = await import("./llm-cost.ts");
+    await trackCost({
+      provider: "anthropic",
+      model: "claude-haiku-4-5",
+      feature: "triage_classify",
+      responseBody: classifyData,
+    });
+  } catch {}
   const classifyText = classifyData.content?.[0]?.text || "{}";
   const clean = classifyText.replace(/```json|```/g, "").trim();
 
@@ -288,6 +297,15 @@ ${msg.bodyPreview}`;
       });
       if (draftResp.ok) {
         const draftData = await draftResp.json();
+        try {
+          const { trackCost } = await import("./llm-cost.ts");
+          await trackCost({
+            provider: "anthropic",
+            model: "claude-opus-4-5",
+            feature: "triage_draft",
+            responseBody: draftData,
+          });
+        } catch {}
         const txt = (draftData.content?.[0]?.text || "").trim();
         draftReply = txt === "NO_DRAFT" || !txt ? null : txt;
       }

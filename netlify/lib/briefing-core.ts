@@ -359,6 +359,15 @@ Write the briefing.`;
     throw new Error(`Claude synthesis failed: ${resp.status} ${err}`);
   }
   const data = await resp.json();
+  try {
+    const { trackCost } = await import("./llm-cost.ts");
+    await trackCost({
+      provider: "anthropic",
+      model: "claude-opus-4-5",
+      feature: "morning_briefing",
+      responseBody: data,
+    });
+  } catch {}
   return data.content?.[0]?.text || "(synthesis returned no content)";
 }
 

@@ -141,6 +141,15 @@ RULES:
       return [];
     }
     const data = await r.json();
+    try {
+      const { trackCost } = await import("./llm-cost.ts");
+      await trackCost({
+        provider: "anthropic",
+        model: "claude-opus-4-7",
+        feature: "anticipations",
+        responseBody: data,
+      });
+    } catch {}
     const text = data.content?.map((b: any) => b.type === "text" ? b.text : "").join("") || "";
     const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
     const arr = JSON.parse(cleaned);
