@@ -197,6 +197,36 @@ export default async (req: Request, context: Context) => {
       );
     }
 
+    // ── DELETE MEETING ──
+    // Allows cleaning up a Zoom meeting created via POST /meetings.
+    // Without this, test artifacts (and any meeting SAM creates that needs canceling)
+    // can only be removed manually from the Zoom UI.
+    if (path === "/meetings" && req.method === "DELETE") {
+      const meetingId = url.searchParams.get("id");
+      if (!meetingId) {
+        return new Response(
+          JSON.stringify({ error: "Missing meeting id (use ?id=...)" }),
+          { status: 400, headers }
+        );
+      }
+      const resp = await fetch(`https://api.zoom.us/v2/meetings/${meetingId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      // Zoom returns 204 No Content on successful deletion
+      if (!resp.ok && resp.status !== 204) {
+        const err = await resp.text();
+        return new Response(
+          JSON.stringify({ error: `Zoom DELETE failed: ${err.substring(0, 300)}`, status: resp.status }),
+          { status: resp.status, headers }
+        );
+      }
+      return new Response(
+        JSON.stringify({ success: true, deleted: meetingId }),
+        { headers }
+      );
+    }
+
     // ── LIST RECORDINGS ──
     if (path === "/recordings" && req.method === "GET") {
       const recordingId = url.searchParams.get("id");
