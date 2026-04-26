@@ -139,4 +139,6 @@ three files contain the architectural shifts; everything else is
 plumbing or instrumentation.
 
 
-<!-- redeploy 12434fa7 → cloud-mode signing key -->
+
+
+<!-- redeploy 364b0d8a → INNGEST_DEV=0 forces cloud mode -->
