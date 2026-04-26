@@ -1,32 +1,27 @@
 import type { Context, Config } from "@netlify/functions";
 import { SAM_TOOLS, executeTool, type ToolContext } from "../lib/sam-tools.ts";
+import { isValidIssuedToken } from "./oauth.mts";
 
 /**
  * SAM MCP SERVER — Model Context Protocol bridge to Claude.ai
  *
- * This endpoint speaks the MCP streamable-HTTP transport (JSON-RPC 2.0).
- * Once registered as a Connector in Claude.ai, every chat with Claude
- * gets direct access to SAM's tool surface — read tasks, create tasks,
- * check cron health, search chat history, send emails, etc. — without
- * David copy-pasting curl output.
+ * Speaks streamable-HTTP JSON-RPC 2.0. Once registered as a Connector in
+ * Claude.ai, every chat with Claude can read/write SAM data directly.
  *
- * Registration steps for David (one-time, ~60 seconds):
- *   1. In Netlify env vars, set SAM_MCP_SECRET = <a long random string>
- *   2. In Claude.ai → Settings → Connectors → Add custom connector
- *   3. URL:  https://sam-chief-of-staff.netlify.app/api/mcp
- *      Auth: Bearer token, value = the SAM_MCP_SECRET you just set
- *   4. Save. Claude.ai introspects and shows the tool list.
+ * Auth:
+ *   1) OAuth bearer token issued by /api/oauth/token (preferred — Claude.ai
+ *      uses this path). On 401, the WWW-Authenticate header points at the
+ *      protected-resource metadata so Claude.ai can begin the OAuth flow.
+ *   2) SAM_MCP_SECRET env var (legacy / direct calls — useful for curl tests
+ *      and anything that bypasses the OAuth dance).
  *
  * Methods implemented:
  *   - initialize        → handshake, returns protocol version + server info
- *   - tools/list        → returns the SAM tool surface as MCP tool definitions
- *   - tools/call        → runs a SAM tool, returns content blocks
- *   - notifications/initialized → no-op ack
+ *   - tools/list        → SAM_TOOLS surface translated to MCP tool defs
+ *   - tools/call        → routes to executeTool() — same code path the
+ *                         in-app Claude agent already uses
+ *   - notifications/initialized → no-op ack (returns 202)
  *   - ping              → health check
- *
- * Security model: a shared bearer token. The token MUST match the
- * SAM_MCP_SECRET env var or every request is rejected with HTTP 401.
- * No fallback. If the env var isn't set, the endpoint refuses everything.
  */
 
 const PROTOCOL_VERSION = "2024-11-05";
@@ -42,7 +37,7 @@ function rpcErr(id: number | string | null, code: number, message: string, data?
   return { jsonrpc: "2.0", id, error: { code, message, ...(data !== undefined ? { data } : {}) } };
 }
 
-function jsonResponse(body: any, status = 200): Response {
+function jsonResponse(body: any, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -51,18 +46,25 @@ function jsonResponse(body: any, status = 200): Response {
       "access-control-allow-origin": "*",
       "access-control-allow-headers": "authorization, content-type, mcp-session-id",
       "access-control-allow-methods": "POST, OPTIONS",
+      ...extraHeaders,
     },
   });
 }
 
-function checkAuth(req: Request): { ok: boolean; reason?: string } {
-  const expected = Netlify.env.get("SAM_MCP_SECRET");
-  if (!expected) return { ok: false, reason: "server has no SAM_MCP_SECRET configured" };
+async function checkAuth(req: Request): Promise<{ ok: boolean; reason?: string }> {
   const auth = req.headers.get("authorization") || "";
   const m = auth.match(/^Bearer\s+(.+)$/i);
   if (!m) return { ok: false, reason: "missing Authorization: Bearer token" };
-  if (m[1] !== expected) return { ok: false, reason: "token mismatch" };
-  return { ok: true };
+  const token = m[1].trim();
+
+  // Path 1: OAuth-issued token (preferred — Claude.ai uses this).
+  if (await isValidIssuedToken(token)) return { ok: true };
+
+  // Path 2: legacy direct-access token via env var (curl, scripts).
+  const envSecret = Netlify.env.get("SAM_MCP_SECRET");
+  if (envSecret && token === envSecret) return { ok: true };
+
+  return { ok: false, reason: "token not recognized" };
 }
 
 async function handleRpc(req: JsonRpcRequest, ctx: ToolContext): Promise<JsonRpcResponse | null> {
@@ -126,11 +128,13 @@ export default async (req: Request, _context: Context) => {
     return jsonResponse({ error: "POST required" }, 405);
   }
 
-  const auth = checkAuth(req);
+  const auth = await checkAuth(req);
   if (!auth.ok) {
+    const origin = `${new URL(req.url).protocol}//${new URL(req.url).host}`;
+    const wwwAuth = `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
     return new Response(JSON.stringify({ error: "unauthorized", reason: auth.reason }), {
       status: 401,
-      headers: { "content-type": "application/json", "www-authenticate": "Bearer" },
+      headers: { "content-type": "application/json", "www-authenticate": wwwAuth },
     });
   }
 
