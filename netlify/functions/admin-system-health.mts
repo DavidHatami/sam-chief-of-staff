@@ -239,6 +239,18 @@ export default async (_req: Request, _ctx: Context) => {
   const fail_count = checks.length - ok_count;
   const overall_ok = fail_count === 0;
 
+  if (!overall_ok) {
+    try {
+      const { captureMessage } = await import("../lib/sentry.ts");
+      const failed = checks.filter((c) => !c.ok).map((c) => ({ name: c.name, error: c.error }));
+      await captureMessage(
+        `System health: ${fail_count}/${checks.length} checks failing`,
+        "error",
+        { failed_checks: failed }
+      );
+    } catch {}
+  }
+
   return new Response(JSON.stringify({
     ok: overall_ok,
     summary: { total: checks.length, ok: ok_count, failed: fail_count },

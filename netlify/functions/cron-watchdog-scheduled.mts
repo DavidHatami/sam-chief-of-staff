@@ -101,8 +101,21 @@ export default async (req: Request, context: Context) => {
     }
     await sendStaleCronAlert(report);
     await recordAlertSent();
+    // Also surface to Sentry so silent-cron failures show up alongside other errors.
+    try {
+      const { captureMessage } = await import("../lib/sentry.ts");
+      await captureMessage(
+        `Cron watchdog: ${stale.length} stale jobs`,
+        "warning",
+        { stale_jobs: stale.map((j: any) => j.name) }
+      );
+    } catch {}
   } catch (e: any) {
     console.error("[CRON-WATCHDOG] check failed:", e?.message, e?.stack);
+    try {
+      const { captureException } = await import("../lib/sentry.ts");
+      await captureException(e, { function: "cron-watchdog-scheduled" });
+    } catch {}
   }
 };
 

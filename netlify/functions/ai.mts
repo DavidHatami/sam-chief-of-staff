@@ -875,6 +875,10 @@ Synthesize now (be concise, no preamble):`;
     );
   } catch (err) {
     console.error("AI Workbench error:", err);
+    try {
+      const { captureException } = await import("../lib/sentry.ts");
+      await captureException(err, { function: "ai" });
+    } catch {}
     return new Response(
       JSON.stringify({ error: String(err) }),
       { status: 500, headers: { "Content-Type": "application/json" } }
