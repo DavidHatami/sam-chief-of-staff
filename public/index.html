@@ -1488,18 +1488,40 @@ function deleteCustomSound(id){
   if(document.getElementById('alarm-modal')){document.getElementById('alarm-modal').remove();openAlarmModal();}
 }
 
+// Subtle full-screen pulse — three soft tint flashes synced to alarm onset.
+// Tinted with edge-glow so it reads as "something just happened" without
+// strobing the whole screen white. Pointer-events:none so it never blocks
+// clicks on the toast underneath. Skipped if user prefers reduced motion.
+function flickerScreen(overdue){
+  try{if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;}catch(e){}
+  const fill=overdue?'rgba(217,119,6,0.15)':'rgba(124,58,237,0.15)';
+  const glow=overdue?'rgba(217,119,6,0.45)':'rgba(124,58,237,0.45)';
+  const flash=document.createElement('div');
+  flash.style.cssText='position:fixed;inset:0;background:'+fill+';box-shadow:inset 0 0 120px '+glow+';z-index:9000;pointer-events:none;opacity:0;transition:opacity 180ms ease-in-out;';
+  document.body.appendChild(flash);
+  let pulse=0;
+  function nextPulse(){
+    if(pulse>=3){flash.remove();return;}
+    pulse++;
+    flash.style.opacity='1';
+    setTimeout(()=>{flash.style.opacity='0';setTimeout(nextPulse,200);},320);
+  }
+  nextPulse();
+}
+
 function fireAlarm(a,overdue){
   const titlePrefix=overdue?'⏰ (Overdue) ':'⏰ ';
   const at=new Date(a.time);
   const timeStr=at.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
   const overdueNote=overdue?' · was set for '+timeStr:' — click to dismiss';
-  // Browser notification (if permission granted) + selected alarm sound + on-screen toast
+  // Browser notification (if permission granted) + selected alarm sound + screen pulse + on-screen toast
   try{
     if('Notification' in window&&Notification.permission==='granted'){
       new Notification(titlePrefix+(a.label||'Alarm'),{body:overdue?'Missed — was set for '+timeStr:timeStr,tag:'sam-alarm-'+a.id});
     }
   }catch(e){}
   playAlarmSound(a.soundId||'builtin:chime');
+  flickerScreen(overdue);
   // Toast — clicking it dismisses the toast AND stops the sound
   const t=document.createElement('div');
   const bg=overdue?'linear-gradient(135deg,var(--amber),#c2410c)':'linear-gradient(135deg,var(--accent),#7c3aed)';
