@@ -57,4 +57,44 @@ const auditLogger: Reactor = {
 
 registerReactor(auditLogger);
 
-export { auditLogger };
+// ─────────────────────────────────────────────────────────────────────────
+// inngest_forwarder — pushes every SAM domain event into Inngest
+//
+// The event log in Postgres is SAM's source of truth. Inngest becomes one
+// of N possible subscribers. Adding more subscribers later (Slack, SMS,
+// Datadog) is just a matter of registering a new reactor here — no
+// changes to the modules that emit events.
+//
+// Filter: skip admin and reactor bookkeeping events. Inngest's free tier
+// has a monthly event quota; no point burning it on internal noise.
+// ─────────────────────────────────────────────────────────────────────────
+const inngestForwarder: Reactor = {
+  name: "inngest_forwarder",
+  interestedIn: (eventType: string) => {
+    if (eventType.startsWith("admin.")) return false;
+    if (eventType.startsWith("reactor.")) return false;
+    if (eventType.startsWith("audit.")) return false;
+    return true;
+  },
+  async run(ctx) {
+    const { sendToInngest } = await import("./inngest-client.ts");
+    const { event } = ctx;
+    const ok = await sendToInngest({
+      type: event.type,
+      entityType: event.entity_type,
+      entityId: event.entity_id,
+      payload: event.payload,
+      correlationId: event.correlation_id,
+    });
+    if (!ok) {
+      // sendToInngest already logged. Throw so reactor_runs records this
+      // as failed and reactor_processed gets rolled back for retry.
+      throw new Error("inngest send returned false");
+    }
+    return { result: { forwarded: true, event_name: `sam/${event.type}` } };
+  },
+};
+
+registerReactor(inngestForwarder);
+
+export { auditLogger, inngestForwarder };
