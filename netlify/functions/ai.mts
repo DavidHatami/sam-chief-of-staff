@@ -390,21 +390,27 @@ export default async (req: Request, context: Context) => {
       };
       const tools = getAnthropicTools();
 
-      // Tool-use multi-turn loop. Two budget guardrails:
+      // Tool-use multi-turn loop. Three budget guardrails:
       //   1. MAX_ITERATIONS = hard cap on round-trips (prevents infinite ping-pong)
       //   2. OVERALL_BUDGET_MS = real-time wall-clock limit across the whole loop
-      //      (Netlify functions hard-stop at ~26s; we leave 2s slack for response shipping)
-      // Most multi-step requests resolve in 1-3 iterations; the cap exists for
-      // pathological cases. The wall-clock budget is what actually saves us
-      // from hitting the function timeout on a slow tool chain.
-      const MAX_ITERATIONS = 5;
-      const OVERALL_BUDGET_MS = 24000;
-      const PER_CALL_TIMEOUT_MS = 12000;
+      //      (Netlify functions hard-stop at 26s; we leave 1s slack for response shipping)
+      //   3. max_tokens per call — when responses hit the cap, we retry with
+      //      higher cap once before giving up. Multi-tool chains with rich
+      //      reasoning between calls were silently truncating at 4096.
+      // Most multi-step requests resolve in 1-5 iterations; the cap exists for
+      // pathological cases. Was 5 iterations / 4096 tokens / 24000 ms — bumped
+      // because real chains were running out mid-flight.
+      const MAX_ITERATIONS = 12;
+      const OVERALL_BUDGET_MS = 25000;
+      const PER_CALL_TIMEOUT_MS = 14000;
+      const BASE_MAX_TOKENS = 8192;
+      const RETRY_MAX_TOKENS = 16384;
       const loopStartedAt = Date.now();
       const toolCallSummary: Array<{ name: string; input: any; result: any }> = [];
       let finalReply = "";
       let lastError: string | null = null;
       let timedOutOfBudget = false;
+      let truncatedAtCap = false;
 
       for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
         const elapsed = Date.now() - loopStartedAt;
@@ -417,6 +423,9 @@ export default async (req: Request, context: Context) => {
         // Per-call timeout shrinks if we're running short on overall budget
         const remaining = OVERALL_BUDGET_MS - elapsed;
         const callTimeout = Math.min(PER_CALL_TIMEOUT_MS, remaining - 500);
+        // If the previous iteration hit max_tokens, retry once with a bigger cap
+        const thisMaxTokens = truncatedAtCap ? RETRY_MAX_TOKENS : BASE_MAX_TOKENS;
+        truncatedAtCap = false;
         const claudeAbort = new AbortController();
         const claudeTimeout = setTimeout(() => claudeAbort.abort(), callTimeout);
         let resp: Response;
@@ -430,7 +439,7 @@ export default async (req: Request, context: Context) => {
             },
             body: JSON.stringify({
               model: "claude-opus-4-7",
-              max_tokens: 4096,
+              max_tokens: thisMaxTokens,
               system: SYSTEM_PROMPT,
               tools,
               messages,
@@ -493,6 +502,20 @@ export default async (req: Request, context: Context) => {
           messages.push({ role: "user", content: toolResults });
           // Loop again — Claude will see the tool results and either call
           // more tools or wrap up with a text reply
+          continue;
+        }
+
+        // If the model stopped because it ran out of tokens mid-thought,
+        // mark the next iteration to retry with a higher max_tokens cap.
+        // This catches the silent-truncation bug where Claude was building
+        // toward a tool call and got cut off, leaving a partial text reply
+        // that read like a final answer but actually wasn't.
+        if (stopReason === "max_tokens" && iter < MAX_ITERATIONS - 1) {
+          truncatedAtCap = true;
+          // Push the partial assistant turn so the next iteration has
+          // continuity, then ask Claude to continue.
+          messages.push({ role: "assistant", content });
+          messages.push({ role: "user", content: "Continue. You hit the token cap — finish your thought and any tool calls you were building toward." });
           continue;
         }
 
