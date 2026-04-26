@@ -425,23 +425,13 @@ function samSignOut(){
       <div id="demails" style="max-height:44vh;min-height:280px;overflow-y:auto;"><div class="eld">Loading Outlook...</div></div>
     </div>
   </div>
-  <!-- SAM STATUS — at-a-glance roll-up of triage/conflicts/briefing/backup -->
-  <div class="card" id="sam-status-card" style="margin-top:0;padding:10px 14px;">
-    <div class="ch" style="margin-bottom:6px;">
-      <h3 style="margin:0;display:flex;align-items:center;gap:8px;">📡 SAM Status<span id="status-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
-      <span class="badge" style="cursor:pointer" onclick="loadSamStatus(true)">REFRESH</span>
-    </div>
-    <div id="sam-status-rows" style="display:flex;flex-direction:column;gap:4px;">
-      <div class="eld" style="padding:8px 0;font-size:12px;">Loading status...</div>
-    </div>
-  </div>
   <!-- SAM MEMORY — what SAM has learned about you, the people you mention, your projects, decisions -->
   <div class="card" id="sam-memory-card" style="margin-top:0;padding:10px 14px;">
     <div class="ch" style="margin-bottom:6px;">
       <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🧠 SAM Memory<span id="sam-memory-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
       <div style="display:flex;gap:6px;">
         <span class="badge" style="cursor:pointer;font-size:9px;" onclick="distillSamMemory(this)" id="sam-distill-btn" title="Run extraction now over recent chat turns">DISTILL</span>
-        <span class="badge" style="cursor:pointer;font-size:9px;" onclick="loadSamMemory(true)">REFRESH</span>
+        <span class="badge" style="cursor:pointer;font-size:9px;" onclick="btnFeedback(this, () => loadSamMemory(true), 'REFRESH')">REFRESH</span>
       </div>
     </div>
     <div id="sam-memory-rows" style="display:flex;flex-direction:column;gap:4px;">
@@ -454,7 +444,7 @@ function samSignOut(){
       <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🔮 What SAM thinks you should know today<span id="sam-anticip-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
       <div style="display:flex;gap:6px;">
         <span class="badge" style="cursor:pointer;font-size:9px;" onclick="generateAnticipations(this)" id="anticip-gen-btn" title="Build today's anticipations now">GENERATE</span>
-        <span class="badge" style="cursor:pointer;font-size:9px;" onclick="loadAnticipations(true)">REFRESH</span>
+        <span class="badge" style="cursor:pointer;font-size:9px;" onclick="btnFeedback(this, () => loadAnticipations(true), 'REFRESH')">REFRESH</span>
       </div>
     </div>
     <div id="sam-anticip-rows" style="display:flex;flex-direction:column;gap:4px;">
@@ -1118,11 +1108,21 @@ function samSignOut(){
   </div>
   <div style="margin-top:24px;">
     <div class="hdr"><h1>Operational Health</h1></div>
+    <!-- SAM STATUS — at-a-glance roll-up of triage/conflicts/briefing/backup -->
+    <div class="card" id="sam-status-card" style="margin-top:0;padding:10px 14px;margin-bottom:8px;">
+      <div class="ch" style="margin-bottom:6px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:8px;">📡 SAM Status<span id="status-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
+        <span class="badge" style="cursor:pointer" onclick="btnFeedback(this, () => loadSamStatus(true), 'REFRESH')">REFRESH</span>
+      </div>
+      <div id="sam-status-rows" style="display:flex;flex-direction:column;gap:4px;">
+        <div class="eld" style="padding:8px 0;font-size:12px;">Loading status...</div>
+      </div>
+    </div>
     <!-- CRON HEALTH — watchdog visibility for all scheduled jobs -->
     <div class="card" id="cron-health-card" style="margin-top:0;padding:10px 14px;margin-bottom:8px;">
       <div class="ch" style="margin-bottom:6px;">
         <h3 style="margin:0;display:flex;align-items:center;gap:8px;">⚙️ Cron Health<span id="cron-health-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
-        <span class="badge" style="cursor:pointer" onclick="loadCronHealth(true)">REFRESH</span>
+        <span class="badge" style="cursor:pointer" onclick="btnFeedback(this, () => loadCronHealth(true), 'REFRESH')">REFRESH</span>
       </div>
       <div id="cron-health-rows" style="display:flex;flex-direction:column;gap:4px;">
         <div class="eld" style="padding:8px 0;font-size:12px;">Loading cron status...</div>
@@ -1132,7 +1132,7 @@ function samSignOut(){
     <div class="card" id="cred-health-card" style="margin-top:0;padding:10px 14px;margin-bottom:8px;">
       <div class="ch" style="margin-bottom:6px;">
         <h3 style="margin:0;display:flex;align-items:center;gap:8px;">🔐 Credentials<span id="cred-health-meta" style="font-size:10px;color:var(--text-muted);font-family:var(--mono);font-weight:400;"></span></h3>
-        <span class="badge" style="cursor:pointer" onclick="loadCredHealth(true)">REFRESH</span>
+        <span class="badge" style="cursor:pointer" onclick="btnFeedback(this, () => loadCredHealth(true), 'REFRESH')">REFRESH</span>
       </div>
       <div id="cred-health-rows" style="display:flex;flex-direction:column;gap:4px;">
         <div class="eld" style="padding:8px 0;font-size:12px;">Loading credential status...</div>
@@ -1239,7 +1239,7 @@ function samSignOut(){
   </div>
 </div>
 <script>
-function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamStatus();loadSamMemory();loadAnticipations();}if(id==='integrations'){if(!instLoaded){loadInstructions();checkBackupStatus();}loadCronHealth();loadCredHealth();loadSmokeTest();}}
+function go(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('p-'+id).classList.add('active');document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));if(el)el.classList.add('active');if(id==='email'&&!eLoaded)loadE('inbox',document.getElementById('btn-inbox'));if(id==='calendar'&&!cLoaded)loadCal();if(id==='tasks')loadTasks();if(id==='zoom'&&!zoomLoaded)loadZoom();if(id==='events'&&!eventsLoaded)loadEvents();if(id==='projects'&&!projLoaded)loadProjects();if(id==='triage')loadTriage();if(id==='conflicts')loadConflicts();if(id==='briefings')loadBriefings();if(id==='reviews')loadReviews();if(id==='transcripts')loadTranscripts();if(id==='unified')loadUnified();if(id==='dash'){loadSamMemory();loadAnticipations();}if(id==='integrations'){if(!instLoaded){loadInstructions();checkBackupStatus();}loadSamStatus();loadCronHealth();loadCredHealth();loadSmokeTest();}}
 function cp(path,btn){navigator.clipboard.writeText('https://sam-chief-of-staff.netlify.app'+path);btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy',1500);}
 // ── CLOCK + ALARM ──
 function tick(){
@@ -1362,6 +1362,32 @@ function deleteAlarm(id){
 }
 setInterval(tick,1000);tick();
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+// ── btnFeedback: visible click feedback for refresh/run buttons ──
+// Without this, REFRESH badges look like static labels because there's no spinner,
+// no opacity change, no acknowledgment of the click. User clicks, internal function
+// runs, but UI gives no signal anything happened. Wrap the onclick in this helper:
+//   <span onclick="btnFeedback(this, () => loadSamStatus(true), 'REFRESH')">REFRESH</span>
+window.btnFeedback = function(btn, asyncFn, restoreText){
+  if(!btn || btn.dataset.busy === '1') return;
+  const orig = restoreText || btn.textContent;
+  btn.dataset.busy = '1';
+  btn.style.opacity = '0.5';
+  btn.style.pointerEvents = 'none';
+  btn.textContent = '…';
+  // Use Promise.resolve so both sync and async fns work
+  Promise.resolve()
+    .then(() => asyncFn())
+    .catch(e => { try { console.error('btnFeedback fn threw:', e); } catch(_){}; })
+    .finally(() => {
+      // Brief minimum-visible window so very-fast loads still show feedback
+      setTimeout(() => {
+        btn.textContent = orig;
+        btn.style.opacity = '1';
+        btn.style.pointerEvents = '';
+        delete btn.dataset.busy;
+      }, 220);
+    });
+};
 // Safe interpolation for JS strings inside HTML attributes (e.g. onclick="func(${attrJsArg(x)})").
 // esc() is HTML-safe but NOT JS-safe: the browser decodes HTML entities before the JS parser
 // sees the attribute value, so an apostrophe in data like "Dr. O'Brien's report" rendered with
@@ -6442,7 +6468,6 @@ loadTasks();
 
 // Load SAM Status card on init — populates dashboard roll-up before user scrolls.
 // Cron Health / Credentials / Smoke Test moved to Integrations tab and load lazily.
-loadSamStatus();
 loadSamHistory();
 loadSamMemory();
 loadAnticipations();

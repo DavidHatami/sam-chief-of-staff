@@ -89,6 +89,40 @@ export default async (req: Request, context: Context) => {
     }
   }
 
+  // PUT — atomic full-corpus restore. Used by E2E tests to snapshot+restore
+  // chat history around a test run instead of wiping production data.
+  // Body shape: { turns: [...] } where each turn is { role, content, at?, model? }.
+  if (req.method === "PUT") {
+    try {
+      const body = await req.json();
+      const turns = body?.turns;
+      if (!Array.isArray(turns)) {
+        return new Response(
+          JSON.stringify({ error: "Body must be { turns: [...] } where turns is an array" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      // Validate each turn has the required shape
+      const valid = turns.every((t: any) => t && typeof t === "object" && typeof t.role === "string" && typeof t.content === "string");
+      if (!valid) {
+        return new Response(
+          JSON.stringify({ error: "Every turn must be an object with string role and content fields" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      await store.setJSON("turns", turns);
+      return new Response(
+        JSON.stringify({ ok: true, restored: turns.length }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    } catch (e: any) {
+      return new Response(JSON.stringify({ error: e?.message || String(e) }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
   return new Response(JSON.stringify({ error: "Method not allowed" }), {
     status: 405,
     headers: { "Content-Type": "application/json" },
