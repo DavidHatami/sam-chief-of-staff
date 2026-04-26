@@ -298,9 +298,12 @@ async function handleAuthorizePost(req: Request): Promise<Response> {
   const code_challenge = String(form.get("code_challenge") || "");
   const code_challenge_method = String(form.get("code_challenge_method") || "S256");
   const scope = String(form.get("scope") || "mcp");
-  const owner_password = String(form.get("owner_password") || "");
-
-  const expected = Netlify.env.get("SAM_MCP_SECRET");
+  // Trim whitespace — clipboards routinely smuggle a trailing newline or
+  // non-breaking space, and password managers sometimes pad values. Strict
+  // equality on the trimmed value is still strong (the secret itself contains
+  // no whitespace by construction) but tolerates these real-world paste bugs.
+  const owner_password = String(form.get("owner_password") || "").trim();
+  const expected = (Netlify.env.get("SAM_MCP_SECRET") || "").trim();
   if (!expected || owner_password !== expected) {
     // Re-render the consent page with an error. Safer than redirecting back
     // to the client with an error param — keeps the wrong-password attempt
