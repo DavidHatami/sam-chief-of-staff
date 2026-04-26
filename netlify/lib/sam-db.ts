@@ -455,3 +455,110 @@ export async function getKnowledgeFromPG(): Promise<{ people: any[]; initiatives
     return null;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// PHASE 10 — CHAT TURN PERSISTENCE + SEMANTIC SEARCH
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Insert a single chat turn (user or assistant) into chat_turns.
+ * Returns the new row's UUID, or null if PG is down. Best-effort —
+ * does not throw, so the caller can keep dual-writing to blob.
+ */
+export async function recordChatTurn(input: {
+  role: "user" | "assistant";
+  content: string;
+  model?: string;
+  metadata?: Record<string, any>;
+}): Promise<string | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const { data, error } = await db
+      .from("chat_turns")
+      .insert({
+        role: input.role,
+        content: input.content,
+        model: input.model || null,
+        metadata: input.metadata || {},
+      })
+      .select("id")
+      .single();
+    if (error) {
+      console.error("[sam-db] recordChatTurn error:", error.message);
+      return null;
+    }
+    return data?.id || null;
+  } catch (e: any) {
+    console.error("[sam-db] recordChatTurn threw:", e?.message || e);
+    return null;
+  }
+}
+
+/**
+ * Persist a 1536-dim embedding for a chat turn. The vector type round-trips
+ * cleanly as a JS number array through supabase-js.
+ */
+export async function recordChatEmbedding(input: {
+  turnId: string;
+  embedding: number[];
+  model?: string;
+}): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  if (!input.embedding || input.embedding.length !== 1536) return false;
+  try {
+    const { error } = await db
+      .from("chat_embeddings")
+      .upsert({
+        turn_id: input.turnId,
+        embedding: input.embedding as any,
+        model: input.model || "text-embedding-3-small",
+      });
+    if (error) {
+      console.error("[sam-db] recordChatEmbedding error:", error.message);
+      return false;
+    }
+    return true;
+  } catch (e: any) {
+    console.error("[sam-db] recordChatEmbedding threw:", e?.message || e);
+    return false;
+  }
+}
+
+/**
+ * Vector search across all past user turns. Calls the search_chat_turns
+ * Postgres function which uses the HNSW index for cosine similarity.
+ * Returns matched user turns plus the assistant reply that followed each one.
+ */
+export async function searchChatTurns(input: {
+  embedding: number[];
+  k?: number;
+  minScore?: number;
+}): Promise<Array<{
+  user_turn_id: string;
+  user_content: string;
+  user_at: string;
+  assistant_content: string | null;
+  assistant_at: string | null;
+  similarity: number;
+}> | null> {
+  const db = getDb();
+  if (!db) return null;
+  if (!input.embedding || input.embedding.length !== 1536) return null;
+  try {
+    const { data, error } = await db.rpc("search_chat_turns", {
+      query_embedding: input.embedding as any,
+      match_count: input.k ?? 6,
+      min_score: input.minScore ?? 0.28,
+    });
+    if (error) {
+      console.error("[sam-db] searchChatTurns error:", error.message);
+      return null;
+    }
+    return data || [];
+  } catch (e: any) {
+    console.error("[sam-db] searchChatTurns threw:", e?.message || e);
+    return null;
+  }
+}

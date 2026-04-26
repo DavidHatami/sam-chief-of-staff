@@ -3,6 +3,13 @@ import { getStore } from "@netlify/blobs";
 import { embedText, topKSimilar, type TurnEmbedding } from "../lib/embeddings.ts";
 import { knowledgeToContext, EMPTY_KNOWLEDGE, type Knowledge } from "../lib/memory-extract.ts";
 import { getAnthropicTools, executeTool, type ToolContext } from "../lib/sam-tools.ts";
+import {
+  recordChatTurn,
+  recordChatEmbedding,
+  searchChatTurns,
+  isFlagOn,
+  getKnowledgeFromPG,
+} from "../lib/sam-db.ts";
 
 const BASE_PROMPT = `You are SAM (Secret Agent Man), Dr. David Hatami's personal AI Chief of Staff.
 
@@ -105,6 +112,26 @@ async function persistTurn(userPrompt: string, assistantReply: string, model: st
           // marginally less complete. Literal recall still works.
         }
       }
+
+      // ── PHASE 10 DUAL-WRITE ──
+      // Mirror this turn into Postgres chat_turns + chat_embeddings so the
+      // pgvector HNSW index has fresh data. Best-effort. No throw paths.
+      try {
+        const userTurnId = await recordChatTurn({ role: "user", content: userPrompt, model });
+        const assistantTurnId = await recordChatTurn({ role: "assistant", content: assistantReply, model });
+        if (userTurnId && vector) {
+          await recordChatEmbedding({ turnId: userTurnId, embedding: vector, model: "text-embedding-3-small" });
+        }
+        // Also embed the assistant reply so we can match against its content too.
+        if (assistantTurnId) {
+          const replyVec = await embedText(assistantReply, openaiKey);
+          if (replyVec) {
+            await recordChatEmbedding({ turnId: assistantTurnId, embedding: replyVec, model: "text-embedding-3-small" });
+          }
+        }
+      } catch {
+        // PG dual-write failure is non-fatal — blob path still has the turn.
+      }
     }
   } catch {
     // Persistence failure is not fatal. The reply already went out.
@@ -171,6 +198,34 @@ export default async (req: Request, context: Context) => {
             try {
               const queryVec = await embedText(prompt, openaiKey);
               if (queryVec) {
+                // ── PHASE 10 PATH — PG vector search via HNSW index ──
+                // When read_from_pg_chat is on, search via Postgres pgvector
+                // instead of brute-force cosine over the blob corpus. The
+                // HNSW index stays sub-second even at 100K+ turns where the
+                // blob path would have to scan everything.
+                let pgUsed = false;
+                try {
+                  if (await isFlagOn("read_from_pg_chat")) {
+                    const hits = await searchChatTurns({ embedding: queryVec, k: SEMANTIC_TOP_K, minScore: SEMANTIC_MIN_SCORE });
+                    if (hits && hits.length > 0) {
+                      const matchedConversations: string[] = [];
+                      for (const h of hits) {
+                        if (!h.user_content) continue;
+                        const when = h.user_at ? new Date(h.user_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+                        const reply = h.assistant_content || "(no reply captured)";
+                        matchedConversations.push(`[${when}, similarity ${(h.similarity || 0).toFixed(2)}]\nDavid: ${h.user_content}\nSAM: ${reply}`);
+                      }
+                      if (matchedConversations.length > 0) {
+                        semanticContext = `\n\n[RELEVANT PAST CONVERSATIONS — pulled from semantic memory because they relate to the current question]\n\n${matchedConversations.join("\n\n---\n\n")}`;
+                        pgUsed = true;
+                      }
+                    }
+                  }
+                } catch {
+                  // PG search failure → fall through to blob path
+                }
+
+                if (!pgUsed) {
                 const embStore = getStore({ name: "sam-embeddings", consistency: "strong" });
                 const storedVecs = (await embStore.get("vectors", { type: "json" })) as TurnEmbedding[] | null;
                 const corpus = Array.isArray(storedVecs) ? storedVecs : [];
@@ -200,6 +255,7 @@ export default async (req: Request, context: Context) => {
                     }
                   }
                 }
+                }
               }
             } catch {
               // Semantic recall failure is non-fatal — literal recall still works
@@ -213,11 +269,51 @@ export default async (req: Request, context: Context) => {
 
     // ── LOAD STANDING KNOWLEDGE — durable facts extracted from past conversations ──
     let standingContext = "";
+    let knowledgeFromPG = false;
     try {
-      const knowStore = getStore({ name: "sam-knowledge", consistency: "strong" });
-      const know = (await knowStore.get("knowledge", { type: "json" })) as Knowledge | null;
-      if (know) {
-        standingContext = knowledgeToContext(know);
+      // ── PHASE 10 PATH — read knowledge from Postgres ──
+      // When read_from_pg_memory flag is on, pull people/initiatives/preferences/
+      // decisions from PG. Falls through to blob path if PG returns nothing.
+      try {
+        if (await isFlagOn("read_from_pg_memory")) {
+          const k = await getKnowledgeFromPG();
+          if (k && (k.people.length || k.initiatives.length || k.preferences.length || k.decisions.length)) {
+            const adapted: Knowledge = {
+              people: k.people.map((p: any) => ({
+                name: p.name,
+                facts: Array.isArray(p.facts) ? p.facts : [],
+                lastMentionedAt: p.last_mentioned_at || "",
+              })),
+              projects: k.initiatives.map((i: any) => ({
+                name: i.name,
+                status: i.status || undefined,
+                facts: Array.isArray(i.facts) ? i.facts : [],
+                lastUpdatedAt: i.last_updated_at || "",
+              })),
+              preferences: k.preferences.map((p: any) => ({
+                text: p.text,
+                extractedAt: p.extracted_at || "",
+              })),
+              decisions: k.decisions.map((d: any) => ({
+                text: d.text,
+                context: d.context || undefined,
+                decidedAt: d.decided_at || "",
+              })),
+              totalExtractions: 0,
+            };
+            standingContext = knowledgeToContext(adapted);
+            knowledgeFromPG = true;
+          }
+        }
+      } catch {
+        // PG read failure → fall through to blob
+      }
+      if (!knowledgeFromPG) {
+        const knowStore = getStore({ name: "sam-knowledge", consistency: "strong" });
+        const know = (await knowStore.get("knowledge", { type: "json" })) as Knowledge | null;
+        if (know) {
+          standingContext = knowledgeToContext(know);
+        }
       }
     } catch {
       // Knowledge load failure non-fatal
