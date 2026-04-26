@@ -1309,7 +1309,14 @@ function openAlarmModal(){
   const existing=getAlarms().filter(a=>!a.triggered);
   const now=new Date();
   const defTime=new Date(now.getTime()+15*60000);
-  const defHHMM=String(defTime.getHours()).padStart(2,'0')+':'+String(defTime.getMinutes()).padStart(2,'0');
+  const defH24=defTime.getHours();
+  const defMin=defTime.getMinutes();
+  const defH12=((defH24+11)%12)+1;
+  const defAP=defH24>=12?'PM':'AM';
+  // Build hour options 1-12 and minute options 00-59 so user gets a real AM/PM picker
+  // instead of fighting whatever the browser's native <input type=time> gives them.
+  let hourOpts='';for(let h=1;h<=12;h++){hourOpts+='<option value="'+h+'"'+(h===defH12?' selected':'')+'>'+h+'</option>';}
+  let minOpts='';for(let m=0;m<60;m++){const mm=String(m).padStart(2,'0');minOpts+='<option value="'+mm+'"'+(m===defMin?' selected':'')+'>'+mm+'</option>';}
   let listHtml='';
   existing.forEach(function(a){
     const at=new Date(a.time);
@@ -1327,9 +1334,17 @@ function openAlarmModal(){
       <h3 style="font-size:15px;font-weight:600;">⏰ Alarms</h3>
       <button onclick="document.getElementById('alarm-modal').remove()" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;">✕</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 120px;gap:8px;margin-bottom:10px;">
+    <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px;align-items:center;">
       <input id="alarm-label" type="text" placeholder="Label (optional)" style="padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
-      <input id="alarm-time" type="time" value="${defHHMM}" style="padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
+      <div style="display:flex;gap:4px;align-items:center;">
+        <select id="alarm-hour" style="padding:8px 6px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">${hourOpts}</select>
+        <span style="color:var(--text-muted);font-weight:600;">:</span>
+        <select id="alarm-min" style="padding:8px 6px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">${minOpts}</select>
+        <select id="alarm-ampm" style="padding:8px 6px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;font-weight:600;">
+          <option value="AM"${defAP==='AM'?' selected':''}>AM</option>
+          <option value="PM"${defAP==='PM'?' selected':''}>PM</option>
+        </select>
+      </div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
       <input id="alarm-date" type="date" value="${now.toISOString().split('T')[0]}" style="flex:1;padding:8px 10px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:13px;">
@@ -1344,8 +1359,14 @@ function openAlarmModal(){
 function addAlarm(){
   const label=document.getElementById('alarm-label').value.trim();
   const date=document.getElementById('alarm-date').value;
-  const time=document.getElementById('alarm-time').value;
-  if(!date||!time)return;
+  const hour12=parseInt(document.getElementById('alarm-hour').value,10);
+  const min=document.getElementById('alarm-min').value;
+  const ampm=document.getElementById('alarm-ampm').value;
+  if(!date||isNaN(hour12)||!min||!ampm)return;
+  // Convert 12-hour to 24-hour. 12 AM = 0, 12 PM = 12, otherwise add 12 for PM.
+  let hour24=hour12%12;
+  if(ampm==='PM')hour24+=12;
+  const time=String(hour24).padStart(2,'0')+':'+min;
   const dt=new Date(date+'T'+time+':00');
   if(isNaN(dt.getTime())||dt<new Date()){alert('Pick a future time.');return;}
   const alarms=getAlarms();
