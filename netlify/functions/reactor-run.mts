@@ -4,18 +4,16 @@ import { runAllReactors } from "../lib/reactor.ts";
 import "../lib/reactors.ts";
 
 /**
- * Phase 5: scheduled reactor runner.
+ * Phase 5: manual reactor trigger endpoint.
  *
- * Runs every minute. Polls the events table for events not yet processed
- * by each registered reactor, dispatches them, records the outcome.
+ * Runs the reactor pipeline once on demand. Useful for testing, debugging,
+ * and forced sweeps after a code change. Returns the run summary.
  *
- * Idempotency: each (event, reactor) pair gets exactly one row in
- * reactor_processed regardless of how many times this function fires.
+ * The scheduled counterpart is reactor-scheduled.mts (cron every minute).
+ * Splitting them is a Netlify Functions constraint: a function with both
+ * `path` and `schedule` only fires on schedule, not via HTTP.
  *
- * Cost bound: sinceMinutesBack=60 + limit=50 caps any single run at 50
- * events per reactor, so a misconfigured reactor can't blow up costs.
- *
- * Manual trigger: also exposed at /api/admin/reactor-run for testing.
+ *   GET /api/admin/reactor-run
  */
 
 export default async (_req: Request, _ctx: Context) => {
@@ -23,7 +21,6 @@ export default async (_req: Request, _ctx: Context) => {
   try {
     const summary = await runAllReactors({ sinceMinutesBack: 60, limit: 50 });
     const elapsedMs = Date.now() - startedAt;
-    console.log(`[reactor-run] ${JSON.stringify({ ...summary, elapsed_ms: elapsedMs })}`);
     return new Response(JSON.stringify({ ok: true, ...summary, elapsed_ms: elapsedMs }, null, 2), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -38,7 +35,5 @@ export default async (_req: Request, _ctx: Context) => {
 };
 
 export const config: Config = {
-  // Manual trigger for testing AND scheduled run via cron
   path: "/api/admin/reactor-run",
-  schedule: "* * * * *", // every minute
 };
