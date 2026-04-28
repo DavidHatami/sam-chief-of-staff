@@ -360,7 +360,7 @@ function providerBase(p) {
   switch (p) {
     case 'm365':  return '/api/m365';
     case 'gmail': return '/api/gmail';
-    case 'yahoo': return '/api/yahoo';
+        case 'yahoo': return '/api/yahoo-fast';
     default: throw new Error(`api.email: unknown provider ${p}`);
   }
 }
