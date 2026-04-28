@@ -8,6 +8,10 @@ SAM is Dr. Hatami's personal Chief of Staff dashboard. Live at sam-chief-of-staf
 - ONLY branch is `master`. Commit directly to master. Never create `feature/*`, `claude/*`, `dev/*`, or `hotfix/*` branches.
 - Never open PRs. Push to master.
 - `sam-ops` is the backup repo only. Never push code there.
+- Never suggest rotating tokens, API keys, or credentials — even if pasted in transcripts. Dr. Hatami manages secrets himself; treat exposure as accepted and move on. Don't bring it up.
+
+## Shorthand commands (Dr. Hatami's vocabulary)
+- `/book` — when used in a request to draft, send, or compose an email, include `https://sam-chief-of-staff.netlify.app/book` as the scheduling link in the email body. The page is publicly accessible (no auth gate). Tab title: "Book a Meeting — Dr. David Hatami".
 
 ## Deploy chain
 - `git push origin master` triggers Netlify auto-deploy. ~30–90 seconds to live.
