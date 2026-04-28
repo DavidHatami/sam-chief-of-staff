@@ -160,15 +160,18 @@ export default async (req: Request, context: Context) => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      // Primary write: blob (still source of truth in Phase 1)
-      await store.setJSON(task.id, task);
+      // Phase 4: blob writes are now gated. Default off — PG is the system of
+      // record. Flip flag `legacy_blob_writes` to true in sam_meta to restore
+      // dual storage behavior for rollback. When blob is off and PG fails,
+      // the error surfaces to the caller instead of silently logging.
+      const writeBlob = await isFlagOn("legacy_blob_writes");
+      const writePG = await isFlagOn("dual_write_tasks");
 
-      // Dual-write to Postgres. AWAITED, not fire-and-forget — Netlify
-      // Functions terminate the worker as soon as the Response returns, so
-      // any in-flight promises get killed mid-request. Awaiting costs ~150ms
-      // but makes the write reliable. Phase 4 removes the blob write so
-      // latency drops back. Try/catch guards SAM staying up if PG is down.
-      if (await isFlagOn("dual_write_tasks")) {
+      if (writeBlob) {
+        await store.setJSON(task.id, task);
+      }
+
+      if (writePG) {
         try {
           await pgCreateTask({
             legacyId: task.id,
@@ -183,7 +186,13 @@ export default async (req: Request, context: Context) => {
             source: "tasks_api",
           });
         } catch (e: any) {
-          console.error("[tasks] dual-write create to PG failed:", e?.message || e);
+          console.error("[tasks] PG create failed:", e?.message || e);
+          if (!writeBlob) {
+            return new Response(
+              JSON.stringify({ error: "Task creation failed", detail: e?.message || String(e) }),
+              { status: 500, headers }
+            );
+          }
         }
       }
 
@@ -206,13 +215,24 @@ export default async (req: Request, context: Context) => {
         createdAt: existing.createdAt,
         updatedAt: new Date().toISOString(),
       };
-      await store.setJSON(id, updated);
+      const writeBlobUpd = await isFlagOn("legacy_blob_writes");
+      const writePGUpd = await isFlagOn("dual_write_tasks");
 
-      if (await isFlagOn("dual_write_tasks")) {
+      if (writeBlobUpd) {
+        await store.setJSON(id, updated);
+      }
+
+      if (writePGUpd) {
         try {
           await pgUpdateTaskByLegacyId(id, body, "tasks_api");
         } catch (e: any) {
-          console.error("[tasks] dual-write update to PG failed:", e?.message || e);
+          console.error("[tasks] PG update failed:", e?.message || e);
+          if (!writeBlobUpd) {
+            return new Response(
+              JSON.stringify({ error: "Task update failed", detail: e?.message || String(e) }),
+              { status: 500, headers }
+            );
+          }
         }
       }
 
@@ -226,13 +246,24 @@ export default async (req: Request, context: Context) => {
       if (!existing) {
         return new Response(JSON.stringify({ error: "Task not found" }), { status: 404, headers });
       }
-      await store.delete(id);
+      const writeBlobDel = await isFlagOn("legacy_blob_writes");
+      const writePGDel = await isFlagOn("dual_write_tasks");
 
-      if (await isFlagOn("dual_write_tasks")) {
+      if (writeBlobDel) {
+        await store.delete(id);
+      }
+
+      if (writePGDel) {
         try {
           await pgDeleteTaskByLegacyId(id, "tasks_api");
         } catch (e: any) {
-          console.error("[tasks] dual-write delete to PG failed:", e?.message || e);
+          console.error("[tasks] PG delete failed:", e?.message || e);
+          if (!writeBlobDel) {
+            return new Response(
+              JSON.stringify({ error: "Task delete failed", detail: e?.message || String(e) }),
+              { status: 500, headers }
+            );
+          }
         }
       }
 
