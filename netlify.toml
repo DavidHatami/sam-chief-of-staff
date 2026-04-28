@@ -7,7 +7,7 @@
 
 [functions."ai"]
   external_node_modules = ["node-fetch"]
-  timeout = 26
+  timeout = 45
 
 [functions."yahoo"]
   external_node_modules = ["imapflow", "mailparser", "nodemailer"]
