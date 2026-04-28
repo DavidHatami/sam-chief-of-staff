@@ -6,7 +6,7 @@ import "../lib/reactors.ts";
 /**
  * Phase 5: scheduled reactor runner.
  *
- * Cron-only. Runs every minute. Polls events table since the last 60
+ * Cron-only. Runs every 5 minutes. Polls events table since the last 60
  * minutes, dispatches new events to each registered reactor, records
  * outcomes in reactor_runs.
  *
@@ -35,5 +35,5 @@ export default async () => {
 };
 
 export const config: Config = {
-  schedule: "* * * * *", // every minute
+  schedule: "*/5 * * * *", // every 5 minutes — credit-budget conscious
 };
